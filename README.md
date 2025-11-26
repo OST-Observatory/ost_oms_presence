@@ -154,6 +154,10 @@ Script: `autostart_client_prompt.ps1`
   setx OBS_PRESENCE_TOKEN "<your_token>"
   ```
   The script reads `$env:OBS_PRESENCE_TOKEN` and sends `Authorization: Bearer <token>`.
+ - Optional: set server via environment variable (persistent for the user):
+   ```powershell
+   setx OBS_PRESENCE_SERVER "https://observatory.example.org/ost_status"
+   ```
 
 Run once (bypassing policy):
 ```powershell
@@ -170,7 +174,7 @@ Task Scheduler setup:
    - Alternative (pass token inline without persistent env var):
      - Arguments:
        ```
-       -ExecutionPolicy Bypass -NoProfile -Command "$env:OBS_PRESENCE_TOKEN='YOUR_LONG_RANDOM_TOKEN'; & 'C:\observatory_presence\autostart_client_prompt.ps1'"
+       -ExecutionPolicy Bypass -NoProfile -Command "$env:OBS_PRESENCE_SERVER='https://observatory.example.org/ost_status'; $env:OBS_PRESENCE_TOKEN='YOUR_LONG_RANDOM_TOKEN'; & 'C:\observatory_presence\autostart_client_prompt.ps1'"
        ```
    - Condition: enable “Run only when user is logged on”
 

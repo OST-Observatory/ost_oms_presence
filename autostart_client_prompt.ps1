@@ -7,7 +7,11 @@
 
 # Configuration
 # Central server URL (Apache → Gunicorn)
-$Server = "https://observatory.example.org/ost_status"
+# Prefer environment variable OBS_PRESENCE_SERVER; fallback to default
+$Server = $env:OBS_PRESENCE_SERVER
+if (-not $Server -or $Server -eq "") {
+    $Server = "https://observatory.example.org/ost_status"
+}
 # Secret token (prefer environment variable OBS_PRESENCE_TOKEN)
 $Token = $env:OBS_PRESENCE_TOKEN
 if (-not $Token -or $Token -eq "") {
