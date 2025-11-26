@@ -6,7 +6,15 @@
 # 4. Sends heartbeats until the RDP session ends.
 
 # Configuration
-$Server = "http://localhost:5000"
+# Central server URL (Apache → Gunicorn)
+$Server = "https://observatory.example.org/ost_status"
+# Secret token (prefer environment variable OBS_PRESENCE_TOKEN)
+$Token = $env:OBS_PRESENCE_TOKEN
+if (-not $Token -or $Token -eq "") {
+    # Fallback placeholder; replace or set OBS_PRESENCE_TOKEN in the user env
+    $Token = "CHANGE_ME_LONG_RANDOM"
+}
+$Headers = @{ Authorization = "Bearer $Token" }
 
 # User prompt
 $User = Read-Host "Please enter your name (observer)"
@@ -14,7 +22,7 @@ $Target = Read-Host "Optional: Target / note (e.g., object name)"
 
 # Register session on the server
 try {
-    Invoke-RestMethod -Method Post -Uri "$Server/start" -Body @{user=$User; target=$Target}
+    Invoke-RestMethod -Method Post -Uri "$Server/start" -Headers $Headers -Body @{user=$User; target=$Target}
     Write-Host "Session started for $User."
 }
 catch {
@@ -26,7 +34,7 @@ catch {
 while ($true) {
     try {
         $body = @{ user = $User } | ConvertTo-Json
-        Invoke-RestMethod -Method Post -Uri "$Server/heartbeat" -ContentType "application/json" -Body $body | Out-Null
+        Invoke-RestMethod -Method Post -Uri "$Server/heartbeat" -Headers $Headers -ContentType "application/json" -Body $body | Out-Null
     }
     catch {
         Write-Host "Heartbeat failed: $_"

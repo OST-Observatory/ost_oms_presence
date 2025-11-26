@@ -1,0 +1,10 @@
+[observatory_presence]
+enabled = true
+port    = https,http
+filter  = observatory_presence
+logpath = /var/log/apache2/access.log
+maxretry = 5
+findtime = 600
+bantime  = 7200
+
+
