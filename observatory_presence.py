@@ -74,6 +74,23 @@ def require_token(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+_cleaner_started = False
+def _start_cleaner_once():
+    global _cleaner_started
+    if not _cleaner_started:
+        t = threading.Thread(target=cleaner_loop, daemon=True)
+        t.start()
+        _cleaner_started = True
+
+@app.before_first_request
+def _init_app():
+    # Ensure base structure and start background cleaner when running under WSGI/Gunicorn
+    with state_lock:
+        if 'occupied' not in state:
+            state['occupied'] = False
+            save_state()
+    _start_cleaner_once()
+
 @app.route('/')
 def index():
     with state_lock:
@@ -185,8 +202,7 @@ if __name__ == '__main__':
         if 'occupied' not in state:
             state['occupied'] = False
             save_state()
-    t = threading.Thread(target=cleaner_loop, daemon=True)
-    t.start()
+    _start_cleaner_once()
     # production: use gunicorn or systemd + WSGI; for testing this is fine
     app.run(host='0.0.0.0', port=5000)
 
