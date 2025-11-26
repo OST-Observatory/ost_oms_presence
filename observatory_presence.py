@@ -82,14 +82,15 @@ def _start_cleaner_once():
         t.start()
         _cleaner_started = True
 
-@app.before_first_request
-def _init_app():
-    # Ensure base structure and start background cleaner when running under WSGI/Gunicorn
+@app.before_request
+def _ensure_init():
+    # Ensure base structure and start background cleaner once (Flask 3.x safe)
     with state_lock:
         if 'occupied' not in state:
             state['occupied'] = False
             save_state()
-    _start_cleaner_once()
+        if not _cleaner_started:
+            _start_cleaner_once()
 
 @app.route('/')
 def index():
@@ -202,7 +203,8 @@ if __name__ == '__main__':
         if 'occupied' not in state:
             state['occupied'] = False
             save_state()
-    _start_cleaner_once()
+        if not _cleaner_started:
+            _start_cleaner_once()
     # production: use gunicorn or systemd + WSGI; for testing this is fine
     app.run(host='0.0.0.0', port=5000)
 
