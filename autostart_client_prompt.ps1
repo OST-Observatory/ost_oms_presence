@@ -20,6 +20,22 @@ if (-not $Token -or $Token -eq "") {
 }
 $Headers = @{ Authorization = "Bearer $Token" }
 
+# Console UX: title + minimize/hint to avoid accidental close
+try {
+    $Host.UI.RawUI.WindowTitle = "Observatory Presence Client - Please do not close"
+    Write-Host "Please do not close this window. You can minimize it. The client keeps your session active until you disconnect." -ForegroundColor Yellow
+    $sig = @"
+using System;
+using System.Runtime.InteropServices;
+public static class Win32ShowWindow {
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+    Add-Type -TypeDefinition $sig -ErrorAction SilentlyContinue | Out-Null
+    $hwnd = (Get-Process -Id $PID).MainWindowHandle
+    if ($hwnd -ne [IntPtr]::Zero) { [Win32ShowWindow]::ShowWindow($hwnd, 6) } # 6 = SW_MINIMIZE
+} catch { }
+
 # GUI prompt (WPF)
 Add-Type -AssemblyName PresentationFramework | Out-Null
 

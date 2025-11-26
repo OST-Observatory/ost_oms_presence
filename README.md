@@ -171,11 +171,11 @@ Task Scheduler setup:
    - Name: “Observatory Presence Client”
    - Trigger: “At log on”
    - Action: Program/script: `powershell.exe`
-   - Arguments: `-ExecutionPolicy Bypass -File "C:\observatory_presence\autostart_client_prompt.ps1"`
+   - Arguments: `-ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\observatory_presence\autostart_client_prompt.ps1"`
    - Alternative (pass token inline without persistent env var):
      - Arguments:
        ```
-       -ExecutionPolicy Bypass -NoProfile -Command "$env:OBS_PRESENCE_SERVER='https://observatory.example.org/ost_status'; $env:OBS_PRESENCE_TOKEN='YOUR_LONG_RANDOM_TOKEN'; & 'C:\observatory_presence\autostart_client_prompt.ps1'"
+       -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "$env:OBS_PRESENCE_SERVER='https://observatory.example.org/ost_status'; $env:OBS_PRESENCE_TOKEN='YOUR_LONG_RANDOM_TOKEN'; & 'C:\observatory_presence\autostart_client_prompt.ps1'"
        ```
    - Condition: enable “Run only when user is logged on”
 
