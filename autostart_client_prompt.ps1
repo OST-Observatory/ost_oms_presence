@@ -1,7 +1,7 @@
 # This script prompts for name and optional note at login, then starts heartbeats.
 # Flow:
 # 1. Task Scheduler starts this script at user logon.
-# 2. Prompt asks "Who is observing?" and an optional note.
+# 2. GUI asks "Who is observing?" and an optional note.
 # 3. Registers the session with the Flask server.
 # 4. Sends heartbeats until the RDP session ends.
 
@@ -20,9 +20,77 @@ if (-not $Token -or $Token -eq "") {
 }
 $Headers = @{ Authorization = "Bearer $Token" }
 
-# User prompt
-$User = Read-Host "Please enter your name (observer)"
-$Target = Read-Host "Optional: Target / note (e.g., object name)"
+# GUI prompt (WPF)
+Add-Type -AssemblyName PresentationFramework | Out-Null
+
+$xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Observatory Presence" Height="260" Width="460" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <TextBlock Text="Who is observing this session?" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+    <TextBlock Grid.Row="1" Text="This helps others see who is currently using the observatory and what target/activity is planned." TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+    <StackPanel Grid.Row="2" Orientation="Vertical">
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+        <TextBlock Text="Name:" Width="110" VerticalAlignment="Center"/>
+        <TextBox x:Name="NameBox" Width="300"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="Target / note:" Width="110" VerticalAlignment="Center"/>
+        <TextBox x:Name="TargetBox" Width="300"/>
+      </StackPanel>
+    </StackPanel>
+
+    <TextBlock Grid.Row="3" Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,10"
+               Text="Tip: This window only appears at login. The client will keep the session alive with periodic heartbeats until you disconnect."/>
+
+    <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button x:Name="CancelBtn" Content="Cancel" Width="90" Margin="0,0,8,0"/>
+      <Button x:Name="StartBtn" Content="Start" Width="90" IsDefault="True"/>
+    </StackPanel>
+  </Grid>
+</Window>
+"@
+
+$reader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
+$window = [Windows.Markup.XamlReader]::Load($reader)
+$NameBox = $window.FindName("NameBox")
+$TargetBox = $window.FindName("TargetBox")
+$StartBtn = $window.FindName("StartBtn")
+$CancelBtn = $window.FindName("CancelBtn")
+
+$result = $null
+$StartBtn.Add_Click({
+    if ([string]::IsNullOrWhiteSpace($NameBox.Text)) {
+        [System.Windows.MessageBox]::Show("Please enter your name.", "Observatory Presence", "OK", "Warning") | Out-Null
+        return
+    }
+    $script:result = [PSCustomObject]@{
+        User   = $NameBox.Text.Trim()
+        Target = $TargetBox.Text.Trim()
+    }
+    $window.Close()
+})
+$CancelBtn.Add_Click({
+    $script:result = $null
+    $window.Close()
+})
+
+[void]$window.ShowDialog()
+if ($null -eq $result) {
+    Write-Host "Cancelled by user."
+    exit 0
+}
+$User = $result.User
+$Target = $result.Target
 
 # Register session on the server
 try {

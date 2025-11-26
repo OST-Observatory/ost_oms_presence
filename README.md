@@ -145,6 +145,7 @@ curl -sS -X POST https://observatory.example.org/ost_status/release \
 ## Windows client (PowerShell + Task Scheduler)
 
 Script: `autostart_client_prompt.ps1`
+- The script now shows a small GUI to collect the observer name and optional target/note at logon and then keeps sending heartbeats until disconnect.
 - Set the central server URL:
   ```powershell
   $Server = "https://observatory.example.org/ost_status"
