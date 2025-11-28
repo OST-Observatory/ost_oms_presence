@@ -25,24 +25,21 @@ function Get-UptimeSec {
 }
 
 function Get-CpuPercent {
+  # Prefer WMI-based sources (more robust across locales), then fallback to Get-Counter
   try {
-    # Primary: Performance counter (may be unavailable on some systems/locales)
-    return (Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1).CounterSamples.CookedValue
-  } catch {
-    try {
-      # Fallback 1: Perf formatted data (locale-independent)
-      $p = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'"
-      if ($null -ne $p -and $p.PercentProcessorTime -ne $null) {
-        return [double]$p.PercentProcessorTime
-      }
-    } catch {}
-    try {
-      # Fallback 2: Average LoadPercentage across CPUs
-      $lp = Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average
-      if ($lp.Average -ne $null) { return [double]$lp.Average }
-    } catch {}
-    return 0
-  }
+    $p = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'"
+    if ($null -ne $p -and $p.PercentProcessorTime -ne $null) {
+      return [double]$p.PercentProcessorTime
+    }
+  } catch {}
+  try {
+    $lp = Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average
+    if ($lp.Average -ne $null) { return [double]$lp.Average }
+  } catch {}
+  try {
+    return (Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1 -ErrorAction Stop).CounterSamples.CookedValue
+  } catch {}
+  return 0
 }
 
 function Get-MemPercent {
