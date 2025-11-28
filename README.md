@@ -160,6 +160,26 @@ Script: `autostart_client_prompt.ps1`
    setx OBS_PRESENCE_SERVER "https://observatory.example.org/ost_status"
    ```
 
+Host status agent (optional, recommended):
+- Script: `deploy/windows/host_status_agent.ps1`
+- Purpose: sends host metrics every 60s (uptime, CPU%, RAM%, C: free %, OS version) to `${OBS_PRESENCE_SERVER}/host_status` with `${OBS_PRESENCE_TOKEN}`.
+- Create a Scheduled Task (runs at startup, repeats every 1 minute, hidden window, whether user is logged on or not):
+  - Program/script: `powershell.exe`
+  - Arguments:
+    ```
+    -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "C:\observatory_presence\deploy\windows\host_status_agent.ps1"
+    ```
+  - Set environment variables for the run account (or inline):
+    - Persistent:
+      ```powershell
+      setx OBS_PRESENCE_SERVER "https://observatory.example.org/ost_status"
+      setx OBS_PRESENCE_TOKEN  "<YOUR_LONG_RANDOM_TOKEN>"
+      ```
+    - Inline (per task, no persistence):
+      ```
+      -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "$env:OBS_PRESENCE_SERVER='https://observatory.example.org/ost_status'; $env:OBS_PRESENCE_TOKEN='<YOUR_LONG_RANDOM_TOKEN>'; & 'C:\observatory_presence\deploy\windows\host_status_agent.ps1'"
+      ```
+
 Run once (bypassing policy):
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\observatory_presence\autostart_client_prompt.ps1"

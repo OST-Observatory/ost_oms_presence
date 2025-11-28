@@ -57,6 +57,27 @@ def save_state():
 def now_iso():
     return datetime.utcnow().isoformat() + 'Z'
 
+def parse_int(value, default=0, min_value=None, max_value=None):
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and v < min_value:
+        v = min_value
+    if max_value is not None and v > max_value:
+        v = max_value
+    return v
+
+def parse_float(value, default=0.0, min_value=None, max_value=None):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and v < min_value:
+        v = min_value
+    if max_value is not None and v > max_value:
+        v = max_value
+    return v
 def require_token(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -123,6 +144,23 @@ def index():
       <button type="submit">Start</button>
     </form>
     <p>Kleiner Hinweis: die Oberfläche ist minimal — für Produktion empfiehlt sich HTTPS & Auth.</p>
+
+    <hr>
+    <h3>Host status</h3>
+    {% if hosts %}
+      <ul>
+      {% for h in hosts.values() %}
+        <li><strong>{{h.hostId}}</strong> — last seen: {{h.ts}}
+          {% if h.osVersion %} • OS: {{h.osVersion}}{% endif %}
+          • CPU: {{'%.0f'|format(h.cpuPercent)}}%
+          • RAM: {{'%.0f'|format(h.memPercent)}}%
+          • C: free {{'%.0f'|format(h.diskCPercent)}}%
+        </li>
+      {% endfor %}
+      </ul>
+    {% else %}
+      <p>OMS host status not available.</p>
+    {% endif %}
     </body>
     </html>
     '''
@@ -133,6 +171,7 @@ def index():
                                   start=s.get('start',''),
                                   target=s.get('target',''),
                                   hb=s.get('last_heartbeat',''),
+                                  hosts=s.get('hosts') or {},
                                   base_path=BASE_PATH or '')
 
 @app.route('/status')
@@ -140,6 +179,29 @@ def status():
     with state_lock:
         return jsonify(state)
 
+@app.route('/host_status', methods=['POST'])
+@require_token
+def host_status():
+    if not request.is_json:
+        return jsonify({'ok': False, 'msg': 'Expected JSON body'}), 400
+    payload = request.get_json(silent=True) or {}
+    host_id = (payload.get('hostId') or '').strip() or request.remote_addr
+    now_ts = now_iso()
+    record = {
+        'hostId': host_id,
+        'ts': payload.get('ts') or now_ts,
+        'uptimeSec': parse_int(payload.get('uptimeSec'), default=0, min_value=0),
+        'cpuPercent': parse_float(payload.get('cpuPercent'), default=0.0, min_value=0.0, max_value=100.0),
+        'memPercent': parse_float(payload.get('memPercent'), default=0.0, min_value=0.0, max_value=100.0),
+        'diskCPercent': parse_float(payload.get('diskCPercent'), default=0.0, min_value=0.0, max_value=100.0),
+        'osVersion': payload.get('osVersion') or ''
+    }
+    with state_lock:
+        if not isinstance(state.get('hosts'), dict):
+            state['hosts'] = {}
+        state['hosts'][host_id] = record
+        save_state()
+    return jsonify({'ok': True})
 @app.route('/start', methods=['POST'])
 @require_token
 def start():
