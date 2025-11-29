@@ -104,11 +104,26 @@ sudo a2ensite observatory_presence
 sudo systemctl reload apache2
 ```
 
-The provided vhost proxies:
+Static files via Apache + reverse proxy:
 ```apache
+# Serve static assets directly (adjust path if different)
+Alias /ost_status/static /mnt/data/observatory_presence/static
+<Directory /mnt/data/observatory_presence/static>
+    Require all granted
+    Options -Indexes
+</Directory>
+
+# Do not proxy static requests
+ProxyPass        /ost_status/static !
+
+# Proxy app to Gunicorn over UNIX socket
 ProxyPass        /ost_status unix:/run/observatory_presence/gunicorn.sock|http://localhost/
 ProxyPassReverse /ost_status http://localhost/
 ```
+
+Notes:
+- Ensure your app is started with `BASE_PATH=/ost_status` so generated static URLs are `/ost_status/static/...`.
+- Locally (without Apache), `BASE_PATH` can be empty; Flask will serve static files under `/static/`.
 
 ### 7) Fail2ban (optional, recommended)
 Blocks repeated unauthorized attempts (multiple 401s on POST).
