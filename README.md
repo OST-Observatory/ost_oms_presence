@@ -1,4 +1,4 @@
-## Observatory User Presence Monitoring System
+## Observatory User Presence Monitoring System (Dashboard)
 
 Lightweight presence/slot system for an observatory PC. A Windows client prompts the user and sends heartbeats to a central web server that displays who is currently observing.
 
@@ -144,8 +144,13 @@ curl -sS -X POST https://observatory.example.org/ost_status/release \
 ---
 ## Windows client (PowerShell + Task Scheduler)
 
+Dashboard UI:
+- Mobile‑first, English-only, auto-refreshes every ~15 seconds via `/status` polling.
+- Sections: Current Session, Host Status, Observed Region (placeholder).
+- Manual connect form is removed; sessions start via the client.
+
 Script: `autostart_client_prompt.ps1`
-- The script now shows a small GUI to collect the observer name and optional target/note at logon and then keeps sending heartbeats until disconnect.
+- The script shows a small GUI to collect the observer name and optional target/note at logon and then keeps sending heartbeats until disconnect.
 - Set the central server URL:
   ```powershell
   $Server = "https://observatory.example.org/ost_status"

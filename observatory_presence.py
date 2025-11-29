@@ -15,7 +15,7 @@ How it works (high level):
 - Anyone on the local network can open the web UI and see current status (or bind to localhost only).
 """
 
-from flask import Flask, jsonify, request, render_template_string, abort
+from flask import Flask, jsonify, request, render_template_string, render_template, abort
 from datetime import datetime, timedelta
 import threading
 import os
@@ -117,62 +117,15 @@ def _ensure_init():
 def index():
     with state_lock:
         s = state.copy()
-    # simple one-file template
-    template = '''
-    <!doctype html>
-    <html>
-    <head><meta charset="utf-8"><title>Observatory Presence</title></head>
-    <body>
-    <h1>Observatory Status</h1>
-    {% if occupied %}
-      <p><strong>Aktuell beobachtet von:</strong> {{user}}</p>
-      <p><strong>Start:</strong> {{start}}</p>
-      <p><strong>Ziel / Notiz:</strong> {{target}}</p>
-      <p><em>Letzter Herzschlag:</em> {{hb}}</p>
-      <form action="{{ base_path }}/release" method="post">
-        <input type="hidden" name="token" value="RELEASE_TOKEN">
-        <button type="submit">Freigeben (manuell)</button>
-      </form>
-    {% else %}
-      <p>Frei — niemand beobachtet gerade.</p>
-    {% endif %}
-    <hr>
-    <h3>Manuell verbinden</h3>
-    <form action="{{ base_path }}/start" method="post">
-      Benutzer: <input name="user"><br>
-      Ziel / Notiz: <input name="target"><br>
-      <button type="submit">Start</button>
-    </form>
-    <p>Kleiner Hinweis: die Oberfläche ist minimal — für Produktion empfiehlt sich HTTPS & Auth.</p>
-
-    <hr>
-    <h3>Host status</h3>
-    {% if hosts %}
-      <ul>
-      {% for h in hosts.values() %}
-        <li><strong>{{h.hostId}}</strong> — last seen: {{h.ts}}
-          {% if h.osVersion %} • OS: {{h.osVersion}}{% endif %}
-          • CPU: {{'%.0f'|format(h.cpuPercent)}}%
-          • RAM: {{'%.0f'|format(h.memPercent)}}%
-          • C: free {{'%.0f'|format(h.diskCPercent)}}%
-        </li>
-      {% endfor %}
-      </ul>
-    {% else %}
-      <p>OMS host status not available.</p>
-    {% endif %}
-    </body>
-    </html>
-    '''
     occupied = s.get('occupied', False)
-    return render_template_string(template,
-                                  occupied=occupied,
-                                  user=s.get('user',''),
-                                  start=s.get('start',''),
-                                  target=s.get('target',''),
-                                  hb=s.get('last_heartbeat',''),
-                                  hosts=s.get('hosts') or {},
-                                  base_path=BASE_PATH or '')
+    return render_template('index.html',
+                           occupied=occupied,
+                           user=s.get('user',''),
+                           start=s.get('start',''),
+                           target=s.get('target',''),
+                           hb=s.get('last_heartbeat',''),
+                           hosts=s.get('hosts') or {},
+                           base_path=BASE_PATH or '')
 
 @app.route('/status')
 def status():

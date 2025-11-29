@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Observatory Dashboard</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+	<script>
+		window.APP_CONFIG = { basePath: "{{ base_path or '' }}" };
+	</script>
+	<script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
+</head>
+<body>
+	<header class="container header">
+		<h1>Observatory Dashboard</h1>
+		<div class="status-pill" id="status-pill"><span id="status-text">Loading…</span></div>
+	</header>
+
+	<main class="container grid">
+		<section class="card">
+			<h2>Current Session</h2>
+			<div class="kv">
+				<div>User</div><div id="sess-user">—</div>
+				<div>Start</div><div id="sess-start">—</div>
+				<div>Target / Note</div><div id="sess-target">—</div>
+				<div>Last heartbeat</div><div id="sess-hb">—</div>
+			</div>
+			<div class="actions">
+				<form id="release-form" action="{{ (base_path or '') + '/release' }}" method="post">
+					<button type="submit" class="btn" id="release-btn" title="Admin only">Release (admin)</button>
+				</form>
+				<p class="hint">Manual connect is disabled. The client starts sessions automatically.</p>
+			</div>
+		</section>
+
+		<section class="card">
+			<h2>Host Status</h2>
+			<ul id="hosts-list" class="hosts"></ul>
+			<p id="hosts-empty" class="muted">No host status available.</p>
+		</section>
+
+		<section class="card card-span">
+			<h2>Observed Region</h2>
+			<div id="observed-region" class="placeholder">
+				<p>Space reserved for a rich panel with target information, charts, and sky previews.</p>
+				<p class="muted">Coming soon.</p>
+			</div>
+		</section>
+	</main>
+
+	<footer class="container footer">
+		<span id="last-refresh" class="muted">Last refresh: —</span>
+	</footer>
+</body>
+</html>
+
+

@@ -1,0 +1,52 @@
+:root {
+	--bg: #0b0f14;
+	--bg-alt: #121821;
+	--text: #e6eef8;
+	--muted: #9fb0c3;
+	--card: #111823;
+	--border: #1e2a3a;
+	--accent: #4da3ff;
+	--accent-weak: rgba(77,163,255,0.15);
+	--ok: #2ecc71;
+	--warn: #f1c40f;
+	--bad: #e74c3c;
+}
+@media (prefers-color-scheme: light) {
+	:root { --bg:#f7fafc; --bg-alt:#fff; --text:#0b0f14; --muted:#516274; --card:#fff; --border:#e6edf5; --accent:#0d6efd; --accent-weak:rgba(13,110,253,0.12); }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif;
+	line-height: 1.5;
+}
+.container { width: 100%; max-width: 1100px; margin: 0 auto; padding: 12px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.status-pill { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-alt); }
+.status-pill.ok { background: var(--accent-weak); border-color: var(--accent); }
+.status-pill.bad { background: rgba(231,76,60,0.12); border-color: var(--bad); }
+.grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 720px) { .grid { grid-template-columns: 1fr 1fr; } .card-span { grid-column: 1 / -1; } }
+.card {
+	background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+	box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+h1, h2 { margin: 0 0 10px 0; }
+.kv { display: grid; grid-template-columns: 160px 1fr; gap: 6px 10px; }
+.kv > div:nth-child(odd) { color: var(--muted); }
+.actions { margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.btn {
+	background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer;
+}
+.btn:disabled { opacity: .5; cursor: default; }
+.hint { color: var(--muted); margin: 0; }
+.muted { color: var(--muted); }
+.hosts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.hosts li { padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-alt); }
+.placeholder { border: 2px dashed var(--border); padding: 20px; border-radius: 10px; background: var(--bg-alt); }
+.footer { padding: 16px 12px 24px; color: var(--muted); }
+
+
