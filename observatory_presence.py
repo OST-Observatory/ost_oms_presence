@@ -22,10 +22,12 @@ import os
 import json
 from functools import wraps
 
-app = Flask(__name__)
 SECRET_TOKEN = os.getenv('SECRET_TOKEN', '')
 DATA_FILE = os.getenv('DATA_FILE', 'presence.json')
 BASE_PATH = os.getenv('BASE_PATH', '')
+# Configure static path to respect reverse-proxy mount (e.g., /ost_status)
+_static_url_path = (BASE_PATH + '/static') if BASE_PATH else '/static'
+app = Flask(__name__, static_url_path=_static_url_path, static_folder='static', template_folder='templates')
 try:
     HEARTBEAT_TIMEOUT = int(os.getenv('HEARTBEAT_TIMEOUT', '90'))  # seconds
 except ValueError:
