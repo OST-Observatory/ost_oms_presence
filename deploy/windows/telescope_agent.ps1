@@ -12,9 +12,9 @@ $ErrorActionPreference = "Stop"
 try { $Host.UI.RawUI.WindowTitle = "Observatory Presence Telescope Agent" } catch {}
 
 function Send-TelescopeStatus {
-  param($Server, $Token, $HostId, $RaHours, $DecDeg, $Tracking, $Slewing)
+  param($Server, $Token, $HostId, $RaHours, $DecDeg, $Tracking, $Slewing, $AtPark, $IsPulse, $Alt, $Az, $Pier, $Utc, $Lst)
   $headers = @{ Authorization = "Bearer $Token" }
-  $payload = [pscustomobject]@{
+  $payload = [ordered]@{
     hostId   = $HostId
     ts       = (Get-Date).ToUniversalTime().ToString("s") + "Z"
     raHours  = [double]$RaHours
@@ -22,7 +22,15 @@ function Send-TelescopeStatus {
     frame    = "JNow"
     tracking = $Tracking
     slewing  = $Slewing
-  } | ConvertTo-Json
+  }
+  if ($null -ne $AtPark)   { $payload['atPark'] = $AtPark }
+  if ($null -ne $IsPulse)  { $payload['isPulseGuiding'] = $IsPulse }
+  if ($null -ne $Alt)      { $payload['altDeg'] = [double]$Alt }
+  if ($null -ne $Az)       { $payload['azDeg'] = [double]$Az }
+  if ($null -ne $Pier)     { $payload['sideOfPier'] = "$Pier" }
+  if ($null -ne $Utc)      { $payload['utc'] = $Utc.ToUniversalTime().ToString("s") + "Z" }
+  if ($null -ne $Lst)      { $payload['lst'] = [double]$Lst }
+  $payload = [pscustomobject]$payload | ConvertTo-Json
   Invoke-RestMethod -Method Post -Uri "$Server/telescope_status" -Headers $headers -ContentType "application/json" -Body $payload | Out-Null
 }
 
@@ -74,11 +82,19 @@ while ($true) {
   $now = Get-Date
   $send = $false
   $ra = $null; $dec = $null; $tracking = $null; $slewing = $null
+  $atPark = $null; $isPulse = $null; $alt = $null; $az = $null; $pier = $null; $utc = $null; $lst = $null
   try {
     $ra = [double]$scope.RightAscension
     $dec = [double]$scope.Declination
     $tracking = $scope.Tracking
     $slewing = $scope.Slewing
+    try { $atPark = $scope.AtPark } catch {}
+    try { $isPulse = $scope.IsPulseGuiding } catch {}
+    try { $tmpAlt = $scope.Altitude; if ($null -ne $tmpAlt) { $alt = [double]$tmpAlt } } catch {}
+    try { $tmpAz  = $scope.Azimuth;  if ($null -ne $tmpAz)  { $az  = [double]$tmpAz } } catch {}
+    try { $pier = $scope.SideOfPier } catch {}
+    try { $utc = $scope.UTCDate } catch {}
+    try { $tmpLst = $scope.SiderealTime; if ($null -ne $tmpLst) { $lst = [double]$tmpLst } } catch {}
     # Send on change (RA ~0.001h, Dec ~0.01deg) or at least every 20 minutes
     if (-not (NearlyEqual $ra $lastRa 0.001) -or -not (NearlyEqual $dec $lastDec 0.01)) { $send = $true }
     if (-not $send -and ($now - $lastSent).TotalMinutes -ge 20) { $send = $true }
@@ -89,7 +105,7 @@ while ($true) {
 
   if ($send -and $ra -ne $null -and $dec -ne $null) {
     try {
-      Send-TelescopeStatus -Server $Server -Token $Token -HostId $HostId -RaHours $ra -DecDeg $dec -Tracking $tracking -Slewing $slewing
+      Send-TelescopeStatus -Server $Server -Token $Token -HostId $HostId -RaHours $ra -DecDeg $dec -Tracking $tracking -Slewing $slewing -AtPark $atPark -IsPulse $isPulse -Alt $alt -Az $az -Pier $pier -Utc $utc -Lst $lst
       $lastSent = Get-Date
       $lastRa = $ra; $lastDec = $dec
     } catch {

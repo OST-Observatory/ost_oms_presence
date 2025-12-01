@@ -182,9 +182,31 @@ def telescope_status():
     except Exception:
         return jsonify({'ok': False, 'msg': 'raHours/decDeg must be numeric'}), 400
     frame = as_str(json_data.get('frame'), 'JNow').strip()
-    tracking = json_data.get('tracking')
-    slewing = json_data.get('slewing')
+    # optional booleans
+    tracking_v = json_data.get('tracking')
+    slewing_v = json_data.get('slewing')
+    at_park_v = json_data.get('atPark')
+    pulse_v = json_data.get('isPulseGuiding')
+    tracking = parse_bool(tracking_v, default=False) if tracking_v is not None else None
+    slewing = parse_bool(slewing_v, default=False) if slewing_v is not None else None
+    at_park = parse_bool(at_park_v, default=False) if at_park_v is not None else None
+    is_pulse_guiding = parse_bool(pulse_v, default=False) if pulse_v is not None else None
     ts = json_data.get('ts') or now_ts
+    # optional floats/strings
+    try:
+        alt_deg = float(json_data.get('altDeg'))
+    except Exception:
+        alt_deg = None
+    try:
+        az_deg = float(json_data.get('azDeg'))
+    except Exception:
+        az_deg = None
+    side_of_pier = as_str(json_data.get('sideOfPier'), '').strip() or None
+    utc_str = as_str(json_data.get('utc'), '').strip() or None
+    try:
+        lst_hours = float(json_data.get('lst'))
+    except Exception:
+        lst_hours = None
 
     ra_j2000 = ra_hours
     dec_j2000 = dec_deg
@@ -210,6 +232,13 @@ def telescope_status():
         'frame': used_frame,
         'tracking': tracking,
         'slewing': slewing,
+        'atPark': at_park,
+        'isPulseGuiding': is_pulse_guiding,
+        'altDeg': alt_deg,
+        'azDeg': az_deg,
+        'sideOfPier': side_of_pier,
+        'utc': utc_str,
+        'lst': lst_hours,
     }
     with state_lock:
         if not isinstance(state.get('telescope'), dict):

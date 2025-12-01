@@ -165,6 +165,14 @@
 				appendDotAndText(lastChip, `Last: ${formatDate(t.ts)}`);
 				chips.appendChild(lastChip);
 
+				// Parked
+				if (t.atPark === true) {
+					const p = document.createElement('span');
+					p.className = 'chip warn';
+					appendDotAndText(p, 'Parked');
+					chips.appendChild(p);
+				}
+
 				const raChip = document.createElement('span');
 				raChip.className = 'chip mono';
 				raChip.textContent = `RA (J2000): ${Number.isFinite(t.raHours) ? t.raHours.toFixed(3) + 'h' : '—'}`;
@@ -175,10 +183,21 @@
 				decChip.textContent = `Dec (J2000): ${Number.isFinite(t.decDeg) ? t.decDeg.toFixed(3) + '°' : '—'}`;
 				chips.appendChild(decChip);
 
+				// Alt/Az
+				if (Number.isFinite(t.altDeg) || Number.isFinite(t.azDeg)) {
+					const aa = document.createElement('span');
+					aa.className = 'chip mono';
+					const alt = Number.isFinite(t.altDeg) ? t.altDeg.toFixed(1) + '°' : '—';
+					const az  = Number.isFinite(t.azDeg) ? t.azDeg.toFixed(1) + '°' : '—';
+					aa.textContent = `Alt/Az: ${alt}/${az}`;
+					chips.appendChild(aa);
+				}
+
 				if (t.tracking !== undefined && t.tracking !== null) {
 					const trChip = document.createElement('span');
-					trChip.className = 'chip ' + (t.tracking ? 'ok' : 'warn');
-					appendDotAndText(trChip, t.tracking ? 'Tracking' : 'Not tracking');
+					const trackingOn = (t.atPark === true) ? false : !!t.tracking;
+					trChip.className = 'chip ' + (trackingOn ? 'ok' : 'warn');
+					appendDotAndText(trChip, trackingOn ? 'Tracking' : 'Tracking: Off');
 					chips.appendChild(trChip);
 				}
 				if (t.slewing !== undefined && t.slewing !== null) {
@@ -186,6 +205,32 @@
 					slChip.className = 'chip ' + (t.slewing ? 'warn' : 'mono');
 					appendDotAndText(slChip, t.slewing ? 'Slewing' : 'Idle');
 					chips.appendChild(slChip);
+				}
+				if (t.isPulseGuiding !== undefined && t.isPulseGuiding !== null) {
+					const pg = document.createElement('span');
+					pg.className = 'chip ' + (t.isPulseGuiding ? 'warn' : 'mono');
+					appendDotAndText(pg, t.isPulseGuiding ? 'Pulse guiding' : 'No pulse guide');
+					chips.appendChild(pg);
+				}
+				if (t.sideOfPier) {
+					const pier = document.createElement('span');
+					pier.className = 'chip mono';
+					pier.textContent = `Pier: ${t.sideOfPier}`;
+					chips.appendChild(pier);
+				}
+				if (Number.isFinite(t.lst)) {
+					const lst = document.createElement('span');
+					lst.className = 'chip mono';
+					const hrs = Math.floor(t.lst);
+					const mins = Math.floor((t.lst - hrs) * 60);
+					lst.textContent = `LST: ${String(hrs).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
+					chips.appendChild(lst);
+				}
+				if (t.utc) {
+					const utc = document.createElement('span');
+					utc.className = 'chip mono';
+					utc.textContent = `UTC: ${formatDate(t.utc)}`;
+					chips.appendChild(utc);
 				}
 
 				row.appendChild(idSpan);
