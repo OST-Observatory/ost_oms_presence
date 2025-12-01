@@ -38,7 +38,14 @@ $Token  = $env:OBS_PRESENCE_TOKEN
 if (-not $Token)  { Write-Host "OBS_PRESENCE_TOKEN not set"  -ForegroundColor Yellow; exit 1 }
 $HostId = $env:COMPUTERNAME
 
-Add-Type -AssemblyName ASCOM.DriverAccess
+# Try .NET DriverAccess first, then COM ProgID fallback
+$useCom = $false
+try {
+  Add-Type -AssemblyName ASCOM.DriverAccess -ErrorAction Stop
+} catch {
+  $useCom = $true
+  Write-Host "ASCOM.DriverAccess not found. Falling back to COM ProgID ($DriverId)." -ForegroundColor Yellow
+}
 
 $scope = $null
 $lastSent = Get-Date "2000-01-01"
@@ -49,7 +56,11 @@ while ($true) {
   try {
     # Try connect every 10 minutes if not connected
     if (-not $scope) {
-      $scope = New-Object ASCOM.DriverAccess.Telescope($DriverId)
+      if (-not $useCom) {
+        $scope = New-Object ASCOM.DriverAccess.Telescope($DriverId)
+      } else {
+        $scope = New-Object -ComObject $DriverId
+      }
     }
     if (-not $scope.Connected) {
       $scope.Connected = $true
@@ -88,7 +99,19 @@ while ($true) {
 
   # If telescope disconnected meanwhile, clean up and retry after 10 minutes
   if (-not $scope.Connected) {
-    try { $scope.Dispose() } catch {}
+    try {
+      if ($scope) {
+        if ($useCom) {
+          # Release COM reference explicitly
+          try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($scope) } catch {}
+        } elseif ($scope -is [System.IDisposable]) {
+          $scope.Dispose()
+        }
+      }
+    } catch {} finally {
+      $scope = $null
+      try { [GC]::Collect(); [GC]::WaitForPendingFinalizers() } catch {}
+    }
     $scope = $null
     Start-Sleep -Seconds 600
     continue
