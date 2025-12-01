@@ -6,7 +6,8 @@
 		if (!s) return '—';
 		try {
 			const d = new Date(s);
-			return d.toLocaleString();
+			// European format DD/MM/YYYY with 24h time
+			return d.toLocaleString('en-GB', { hour12: false });
 		} catch { return s; }
 	}
 	function fmtIntSecToHhMm(sec) {
@@ -43,7 +44,7 @@
 		$('sess-target').textContent = data.target || '—';
 		$('sess-planned').textContent = formatDate(data.planned_end);
 		$('sess-hb').textContent = formatDate(data.last_heartbeat);
-		$('last-refresh').textContent = 'Last refresh: ' + new Date().toLocaleTimeString();
+		$('last-refresh').textContent = 'Last refresh: ' + new Date().toLocaleTimeString(undefined, { hour12: false });
 
 		const hosts = data.hosts || {};
 		const list = $('hosts-list');
