@@ -42,7 +42,7 @@ Add-Type -AssemblyName PresentationFramework | Out-Null
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Observatory Presence" Height="330" Width="720" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+        Title="Observatory Presence" Height="310" Width="680" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
   <Grid Margin="12">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
@@ -163,7 +163,27 @@ try {
 }
 catch {
     Write-Host "Error starting session: $_"
-    exit 1
+    # Only retry with force on HTTP 409 Conflict (session already occupied)
+    $statusCode = $null
+    try {
+        if ($_.Exception -and $_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        } elseif ($_.Exception.StatusCode) {
+            $statusCode = [int]$_.Exception.StatusCode
+        }
+    } catch { }
+    if ($statusCode -ne 409) {
+        exit 1
+    }
+    Write-Host "Retrying with force override due to 409 Conflict..."
+    try {
+        $body['force'] = $true
+        Invoke-RestMethod -Method Post -Uri "$Server/start" -Headers $Headers -Body $body
+        Write-Host "Session started for $User (forced)."
+    } catch {
+        Write-Host "Forced start failed: $_"
+        exit 1
+    }
 }
 
 # Heartbeat loop

@@ -85,6 +85,33 @@ def parse_float(value, default=0.0, min_value=None, max_value=None):
     if max_value is not None and v > max_value:
         v = max_value
     return v
+def parse_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    try:
+        s = str(value).strip().lower()
+    except Exception:
+        return default
+    return s in ('1', 'true', 'yes', 'y', 'on')
+
+def clear_session_fields():
+    # Remove only session-related keys; preserve monitoring data like hosts/telescope
+    for key in (
+        'occupied',
+        'user',
+        'target',
+        'start',
+        'last_heartbeat',
+        'planned_hours',
+        'planned_minutes',
+        'planned_end',
+    ):
+        try:
+            state.pop(key, None)
+        except Exception:
+            pass
 def require_token(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -220,6 +247,8 @@ def start():
     json_data = request.get_json(silent=True) or {}
     user = request.values.get('user') or json_data.get('user') or request.remote_addr
     target = request.values.get('target') or json_data.get('target') or ''
+    force_raw = request.values.get('force') or json_data.get('force')
+    force = parse_bool(force_raw, default=False)
     # planned duration/end (multiple inputs supported)
     planned_minutes_raw = request.values.get('planned_minutes') or json_data.get('planned_minutes')
     planned_hours_raw = request.values.get('planned_hours') or json_data.get('planned_hours')
@@ -227,8 +256,10 @@ def start():
     planned_minutes = parse_int(planned_minutes_raw, default=0, min_value=0)
     planned_hours = parse_float(planned_hours_raw, default=0.0, min_value=0.0)
     with state_lock:
-        if state.get('occupied'):
-            return jsonify({'ok': False, 'msg': 'Bereits belegt', 'state': state}), 409
+        if state.get('occupied') and not force:
+            return jsonify({'ok': False, 'msg': 'Already occupied', 'state': state}), 409
+        if force and state.get('occupied'):
+            clear_session_fields()
         state['occupied'] = True
         state['user'] = user
         state['target'] = target
