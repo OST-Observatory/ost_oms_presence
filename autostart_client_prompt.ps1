@@ -42,7 +42,7 @@ Add-Type -AssemblyName PresentationFramework | Out-Null
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Observatory Presence" Height="310" Width="480" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+        Title="Observatory Presence" Height="330" Width="720" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
   <Grid Margin="12">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
@@ -57,21 +57,21 @@ $xaml = @"
     <StackPanel Grid.Row="2" Orientation="Vertical">
       <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
         <TextBlock Text="Name:" Width="110" VerticalAlignment="Center"/>
-        <TextBox x:Name="NameBox" Width="300"/>
+        <TextBox x:Name="NameBox" Width="440"/>
       </StackPanel>
       <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
         <TextBlock Text="Target / note:" Width="110" VerticalAlignment="Center"/>
-        <TextBox x:Name="TargetBox" Width="300"/>
+        <TextBox x:Name="TargetBox" Width="440"/>
       </StackPanel>
       <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
         <TextBlock Text="Planned (hours):" Width="110" VerticalAlignment="Center"/>
-        <TextBox x:Name="PlannedHoursBox" Width="120"/>
-        <TextBlock Text="Optional. Estimated observing duration." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray"/>
+        <TextBox x:Name="PlannedHoursBox" Width="140"/>
+        <TextBlock Text="Optional. Estimated observing duration." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" TextWrapping="Wrap" Width="360"/>
       </StackPanel>
       <StackPanel Orientation="Horizontal">
         <TextBlock Text="End time (HH:mm):" Width="110" VerticalAlignment="Center"/>
-        <TextBox x:Name="EndTimeBox" Width="120"/>
-        <TextBlock Text="Optional. If set, overrides planned hours." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray"/>
+        <TextBox x:Name="EndTimeBox" Width="140"/>
+        <TextBlock Text="Optional. If set, overrides planned hours." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" TextWrapping="Wrap" Width="360"/>
       </StackPanel>
     </StackPanel>
 
