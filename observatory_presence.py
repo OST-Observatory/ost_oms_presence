@@ -59,6 +59,11 @@ def save_state():
 def now_iso():
     return datetime.utcnow().isoformat() + 'Z'
 
+def as_str(value, default=''):
+    try:
+        return str(value) if value is not None else default
+    except Exception:
+        return default
 def parse_int(value, default=0, min_value=None, max_value=None):
     try:
         v = int(value)
@@ -136,13 +141,62 @@ def status():
     with state_lock:
         return jsonify(state)
 
+@app.route('/telescope_status', methods=['POST'])
+@require_token
+def telescope_status():
+    json_data = request.get_json(silent=True) or {}
+    host_id = as_str(json_data.get('hostId'), request.remote_addr or '').strip()
+    if not host_id:
+        return jsonify({'ok': False, 'msg': 'hostId required'}), 400
+    now_ts = now_iso()
+    try:
+        ra_hours = float(json_data.get('raHours'))
+        dec_deg = float(json_data.get('decDeg'))
+    except Exception:
+        return jsonify({'ok': False, 'msg': 'raHours/decDeg must be numeric'}), 400
+    frame = as_str(json_data.get('frame'), 'JNow').strip()
+    tracking = json_data.get('tracking')
+    slewing = json_data.get('slewing')
+    ts = json_data.get('ts') or now_ts
+
+    ra_j2000 = ra_hours
+    dec_j2000 = dec_deg
+    used_frame = 'J2000'
+    if frame.upper() != 'J2000':
+        try:
+            from astropy.coordinates import SkyCoord, FK5
+            from astropy.time import Time
+            import astropy.units as u
+            obstime = Time.now()
+            c = SkyCoord(ra=ra_hours*u.hourangle, dec=dec_deg*u.deg, frame='fk5', equinox=obstime)
+            c2000 = c.transform_to(FK5(equinox=Time('J2000')))
+            ra_j2000 = c2000.ra.to(u.hourangle).value
+            dec_j2000 = c2000.dec.deg
+        except Exception:
+            used_frame = frame
+
+    record = {
+        'hostId': host_id,
+        'ts': ts,
+        'raHours': ra_j2000,
+        'decDeg': dec_j2000,
+        'frame': used_frame,
+        'tracking': tracking,
+        'slewing': slewing,
+    }
+    with state_lock:
+        if not isinstance(state.get('telescope'), dict):
+            state['telescope'] = {}
+        state['telescope'][host_id] = record
+        save_state()
+    return jsonify({'ok': True})
 @app.route('/host_status', methods=['POST'])
 @require_token
 def host_status():
     if not request.is_json:
         return jsonify({'ok': False, 'msg': 'Expected JSON body'}), 400
     payload = request.get_json(silent=True) or {}
-    host_id = (payload.get('hostId') or '').strip() or request.remote_addr
+    host_id = as_str(payload.get('hostId'), '').strip() or (request.remote_addr or '')
     now_ts = now_iso()
     record = {
         'hostId': host_id,

@@ -134,6 +134,65 @@
 				list.appendChild(li);
 			});
 		}
+
+		// Telescope chips (Observed Region)
+		const tel = data.telescope || {};
+		const telList = $('tel-list');
+		const telEmpty = $('tel-empty');
+		telList.innerHTML = '';
+		const telEntries = Object.values(tel);
+		if (telEntries.length === 0) {
+			telEmpty.style.display = '';
+		} else {
+			telEmpty.style.display = 'none';
+			telEntries.forEach(t => {
+				const li = document.createElement('li');
+				const row = document.createElement('div');
+				row.className = 'host-row';
+				const idSpan = document.createElement('div');
+				idSpan.className = 'host-id';
+				idSpan.textContent = t.hostId || 'telescope';
+				const chips = document.createElement('div');
+				chips.className = 'chips';
+
+				const lastChip = document.createElement('span');
+				const lastMs = t.ts ? (new Date(t.ts)).getTime() : 0;
+				const now = Date.now();
+				const deltaSec = lastMs ? Math.max(0, Math.round((now - lastMs)/1000)) : null;
+				lastChip.className = 'chip ' + (deltaSec === null ? 'warn' :
+					(deltaSec <= 1200 ? 'ok' : (deltaSec <= 1800 ? 'warn' : 'bad'))); // 20min heartbeat target
+				appendDotAndText(lastChip, `Last: ${formatDate(t.ts)}`);
+				chips.appendChild(lastChip);
+
+				const raChip = document.createElement('span');
+				raChip.className = 'chip mono';
+				raChip.textContent = `RA (J2000): ${Number.isFinite(t.raHours) ? t.raHours.toFixed(3) + 'h' : '—'}`;
+				chips.appendChild(raChip);
+
+				const decChip = document.createElement('span');
+				decChip.className = 'chip mono';
+				decChip.textContent = `Dec (J2000): ${Number.isFinite(t.decDeg) ? t.decDeg.toFixed(3) + '°' : '—'}`;
+				chips.appendChild(decChip);
+
+				if (t.tracking !== undefined && t.tracking !== null) {
+					const trChip = document.createElement('span');
+					trChip.className = 'chip ' + (t.tracking ? 'ok' : 'warn');
+					appendDotAndText(trChip, t.tracking ? 'Tracking' : 'Not tracking');
+					chips.appendChild(trChip);
+				}
+				if (t.slewing !== undefined && t.slewing !== null) {
+					const slChip = document.createElement('span');
+					slChip.className = 'chip ' + (t.slewing ? 'warn' : 'mono');
+					appendDotAndText(slChip, t.slewing ? 'Slewing' : 'Idle');
+					chips.appendChild(slChip);
+				}
+
+				row.appendChild(idSpan);
+				row.appendChild(chips);
+				li.appendChild(row);
+				telList.appendChild(li);
+			});
+		}
 	}
 
 	async function fetchStatus() {

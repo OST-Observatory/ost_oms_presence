@@ -204,6 +204,45 @@ Host status agent (optional, recommended):
       -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "$env:OBS_PRESENCE_SERVER='https://observatory.example.org/ost_status'; $env:OBS_PRESENCE_TOKEN='<YOUR_LONG_RANDOM_TOKEN>'; & 'C:\observatory_presence\deploy\windows\host_status_agent.ps1'"
       ```
 
+Telescope agent (Windows + ASCOM, optional):
+- Script: `deploy/windows/telescope_agent.ps1`
+- Purpose: reads RA/Dec from ASCOM telescope (`ASCOM.tenmicron_mount.Telescope`) and posts to `${OBS_PRESENCE_SERVER}/telescope_status` with `${OBS_PRESENCE_TOKEN}`.
+- Behavior:
+  - Every 10 minutes: try to connect if not connected (telescope may be powered off)
+  - While connected: every 5 minutes read RA/Dec (JNow) and send only on change; at least every 20 minutes send a heartbeat
+- Prerequisites on Windows:
+  - Install ASCOM Platform
+  - Install TenMicron driver (`ASCOM.tenmicron_mount.Telescope`)
+- Scheduled Task (startup, hidden, repeat):
+  - Program/script: `powershell.exe`
+  - Arguments:
+    ```
+    -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "C:\observatory_presence\deploy\windows\telescope_agent.ps1"
+    ```
+  - Env vars (user context):
+    ```powershell
+    setx OBS_PRESENCE_SERVER "https://observatory.example.org/ost_status"
+    setx OBS_PRESENCE_TOKEN  "<YOUR_LONG_RANDOM_TOKEN>"
+    ```
+  - Optional: override driver id
+    ```
+    -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "C:\observatory_presence\deploy\windows\telescope_agent.ps1" -DriverId "ASCOM.tenmicron_mount.Telescope"
+    ```
+- Server-side optional (J2000 conversion):
+  - To convert JNow → J2000 on the server, install Astropy:
+    ```bash
+    sudo -u ost-status /mnt/data/observatory_presence/.venv/bin/pip install astropy
+    ```
+  - Without Astropy, values are stored as sent and marked via `frame`.
+
+Manual telescope test (curl):
+```bash
+curl -sS -X POST https://observatory.example.org/ost_status/telescope_status \
+  -H "Authorization: Bearer <your_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"hostId":"OMS-PC","ts":"2025-01-01T00:00:00Z","raHours":12.345,"decDeg":-23.45,"frame":"JNow","tracking":true,"slewing":false}'
+```
+
 Run once (bypassing policy):
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\observatory_presence\autostart_client_prompt.ps1"
@@ -247,6 +286,8 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 - `deploy/fail2ban/filter.d/observatory_presence.conf` and `deploy/fail2ban/jail.d/observatory_presence.local`
 - `deploy/scripts/setup_data_dir.sh` (creates data dir with permissions)
 - `deploy/tests/http_tests.sh` (basic E2E test)
+- `deploy/windows/host_status_agent.ps1` (Windows host metrics agent)
+- `deploy/windows/telescope_agent.ps1` (Windows ASCOM telescope agent)
 
 ---
 ## Local testing (dashboard)
