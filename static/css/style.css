@@ -45,7 +45,23 @@ h1, h2 { margin: 0 0 10px 0; }
 .hint { color: var(--muted); margin: 0; }
 .muted { color: var(--muted); }
 .hosts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.hosts li { padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-alt); }
+.hosts li { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-alt); display: grid; gap: 8px; }
+.host-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.host-id { font-weight: 600; }
+.chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chip {
+	display: inline-flex; align-items: center; gap: 6px;
+	padding: 4px 8px; border-radius: 999px; border: 1px solid var(--border);
+	background: var(--bg); color: var(--text); font-size: 12px;
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--muted); }
+.chip.ok { border-color: rgba(46,204,113,0.35); background: rgba(46,204,113,0.12); }
+.chip.ok .dot { background: var(--ok); }
+.chip.warn { border-color: rgba(241,196,15,0.35); background: rgba(241,196,15,0.12); }
+.chip.warn .dot { background: var(--warn); }
+.chip.bad { border-color: rgba(231,76,60,0.35); background: rgba(231,76,60,0.12); }
+.chip.bad .dot { background: var(--bad); }
+.chip.mono { background: var(--bg-alt); border-color: var(--border); }
 .placeholder { border: 2px dashed var(--border); padding: 20px; border-radius: 10px; background: var(--bg-alt); }
 .footer { padding: 16px 12px 24px; color: var(--muted); }
 

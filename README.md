@@ -147,7 +147,7 @@ Manual curl:
 curl -sSL https://observatory.example.org/ost_status/status | jq .
 curl -sS -X POST https://observatory.example.org/ost_status/start \
   -H "Authorization: Bearer <your_token>" \
-  -d "user=alice&target=saturn"
+  -d "user=alice&target=saturn&planned_hours=2.5"
 curl -sS -X POST https://observatory.example.org/ost_status/heartbeat \
   -H "Authorization: Bearer <your_token>" \
   -H "Content-Type: application/json" \
@@ -161,11 +161,11 @@ curl -sS -X POST https://observatory.example.org/ost_status/release \
 
 Dashboard UI:
 - Mobile‑first, English-only, auto-refreshes every ~15 seconds via `/status` polling.
-- Sections: Current Session, Host Status, Observed Region (placeholder).
+- Sections: Current Session (shows planned end if provided), Host Status, Observed Region (placeholder).
 - Manual connect form is removed; sessions start via the client.
 
 Script: `autostart_client_prompt.ps1`
-- The script shows a small GUI to collect the observer name and optional target/note at logon and then keeps sending heartbeats until disconnect.
+- The script shows a small GUI to collect the observer name, optional target/note, and an optional planned window at logon, then keeps sending heartbeats until disconnect.
 - Set the central server URL:
   ```powershell
   $Server = "https://observatory.example.org/ost_status"
@@ -179,6 +179,10 @@ Script: `autostart_client_prompt.ps1`
    ```powershell
    setx OBS_PRESENCE_SERVER "https://observatory.example.org/ost_status"
    ```
+ - Planned window input (either/or):
+   - Planned (hours): decimal hours (e.g., `1.5`) → server computes planned end
+   - End time (HH:mm): local time today; if already passed, uses next day → server stores planned end
+   - The dashboard shows “Planned end” when available.
 
 Host status agent (optional, recommended):
 - Script: `deploy/windows/host_status_agent.ps1`
@@ -243,3 +247,45 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 - `deploy/fail2ban/filter.d/observatory_presence.conf` and `deploy/fail2ban/jail.d/observatory_presence.local`
 - `deploy/scripts/setup_data_dir.sh` (creates data dir with permissions)
 - `deploy/tests/http_tests.sh` (basic E2E test)
+
+---
+## Local testing (dashboard)
+
+Quick run:
+```bash
+# 1) Ensure dependencies
+pip install flask
+
+# 2) Make sure no token is set (local endpoints will be open)
+unset SECRET_TOKEN 2>/dev/null || set SECRET_TOKEN=
+
+# 3) Start the app (BASE_PATH should be empty locally)
+python observatory_presence.py
+```
+
+Open `http://localhost:5000`. Locally, static assets are served under `/static/` and the dashboard polls `/status` every ~15s.
+
+Simulate a session without the Windows client:
+```bash
+curl -sS -X POST http://localhost:5000/start -d "user=alice&target=saturn"
+curl -sS http://localhost:5000/status | jq .
+# Optional: release
+curl -sS -X POST http://localhost:5000/release
+```
+
+Host status test (optional):
+```bash
+BASE_URL=http://localhost:5000 TOKEN=ignored \
+  bash deploy/tests/host_status_test.sh
+```
+
+Notes:
+- When `SECRET_TOKEN` is empty, auth is disabled for local testing (mutating endpoints are open). In production, set `SECRET_TOKEN` and call mutating endpoints with the bearer token.
+- If you want to fully mimic production locally, you can export:
+  ```bash
+  export SECRET_TOKEN="devtoken"
+  export DATA_FILE="./presence.json"
+  export HEARTBEAT_TIMEOUT=90
+  export BASE_PATH=""
+  ```
+  and call protected endpoints with `-H "Authorization: Bearer devtoken"`.

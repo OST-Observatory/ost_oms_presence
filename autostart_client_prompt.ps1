@@ -42,7 +42,7 @@ Add-Type -AssemblyName PresentationFramework | Out-Null
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Observatory Presence" Height="260" Width="460" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+        Title="Observatory Presence" Height="310" Width="480" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
   <Grid Margin="12">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
@@ -59,9 +59,19 @@ $xaml = @"
         <TextBlock Text="Name:" Width="110" VerticalAlignment="Center"/>
         <TextBox x:Name="NameBox" Width="300"/>
       </StackPanel>
-      <StackPanel Orientation="Horizontal">
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
         <TextBlock Text="Target / note:" Width="110" VerticalAlignment="Center"/>
         <TextBox x:Name="TargetBox" Width="300"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+        <TextBlock Text="Planned (hours):" Width="110" VerticalAlignment="Center"/>
+        <TextBox x:Name="PlannedHoursBox" Width="120"/>
+        <TextBlock Text="Optional. Estimated observing duration." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="End time (HH:mm):" Width="110" VerticalAlignment="Center"/>
+        <TextBox x:Name="EndTimeBox" Width="120"/>
+        <TextBlock Text="Optional. If set, overrides planned hours." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray"/>
       </StackPanel>
     </StackPanel>
 
@@ -80,6 +90,8 @@ $reader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
 $window = [Windows.Markup.XamlReader]::Load($reader)
 $NameBox = $window.FindName("NameBox")
 $TargetBox = $window.FindName("TargetBox")
+$PlannedHoursBox = $window.FindName("PlannedHoursBox")
+$EndTimeBox = $window.FindName("EndTimeBox")
 $StartBtn = $window.FindName("StartBtn")
 $CancelBtn = $window.FindName("CancelBtn")
 
@@ -92,6 +104,8 @@ $StartBtn.Add_Click({
     $script:result = [PSCustomObject]@{
         User   = $NameBox.Text.Trim()
         Target = $TargetBox.Text.Trim()
+        PlannedHours = $PlannedHoursBox.Text.Trim()
+        EndTime      = $EndTimeBox.Text.Trim()
     }
     $window.Close()
 })
@@ -107,10 +121,44 @@ if ($null -eq $result) {
 }
 $User = $result.User
 $Target = $result.Target
+$PlannedHoursText = $result.PlannedHours
+$EndTimeText = $result.EndTime
+$HasPlannedHours = $false
+$PlannedHours = 0.0
+if ($PlannedHoursText -and ($PlannedHoursText -match '^[0-9]+(\.[0-9]+)?$')) {
+    $PlannedHours = [double]$PlannedHoursText
+    if ($PlannedHours -lt 0) { $PlannedHours = 0 }
+    if ($PlannedHours -gt 0) { $HasPlannedHours = $true }
+}
+
+# Parse end time (HH:mm) local -> ISO UTC
+$HasEndTime = $false
+$PlannedEndIso = $null
+if ($EndTimeText -and ($EndTimeText -match '^\d{1,2}:\d{2}$')) {
+    try {
+        $parts = $EndTimeText.Split(':')
+        $h = [int]$parts[0]; $m = [int]$parts[1]
+        if ($h -ge 0 -and $h -lt 24 -and $m -ge 0 -and $m -lt 60) {
+            $nowLocal = Get-Date
+            $endLocal = Get-Date -Year $nowLocal.Year -Month $nowLocal.Month -Day $nowLocal.Day -Hour $h -Minute $m -Second 0
+            if ($endLocal -lt $nowLocal) {
+                $endLocal = $endLocal.AddDays(1)
+            }
+            $PlannedEndIso = $endLocal.ToUniversalTime().ToString("s") + "Z"
+            $HasEndTime = $true
+        }
+    } catch { }
+}
 
 # Register session on the server
 try {
-    Invoke-RestMethod -Method Post -Uri "$Server/start" -Headers $Headers -Body @{user=$User; target=$Target}
+    $body = @{ user=$User; target=$Target }
+    if ($HasEndTime) {
+        $body['planned_end'] = $PlannedEndIso
+    } elseif ($HasPlannedHours) {
+        $body['planned_hours'] = $PlannedHours
+    }
+    Invoke-RestMethod -Method Post -Uri "$Server/start" -Headers $Headers -Body $body
     Write-Host "Session started for $User."
 }
 catch {

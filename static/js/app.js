@@ -15,6 +15,20 @@
 		const m = Math.floor((sec%3600)/60);
 		return `${h}h ${m}m`;
 	}
+	function fmtMinutes(mins) {
+		if (!mins || mins <= 0) return '—';
+		const h = Math.floor(mins/60);
+		const m = mins % 60;
+		if (h && m) return `${h}h ${m}m`;
+		if (h) return `${h}h`;
+		return `${m}m`;
+	}
+	function appendDotAndText(el, text) {
+		const dot = document.createElement('span');
+		dot.className = 'dot';
+		el.appendChild(dot);
+		el.appendChild(document.createTextNode(text));
+	}
 
 	function render(data) {
 		const occupied = !!data.occupied;
@@ -27,6 +41,7 @@
 		$('sess-user').textContent = data.user || '—';
 		$('sess-start').textContent = formatDate(data.start);
 		$('sess-target').textContent = data.target || '—';
+		$('sess-planned').textContent = formatDate(data.planned_end);
 		$('sess-hb').textContent = formatDate(data.last_heartbeat);
 		$('last-refresh').textContent = 'Last refresh: ' + new Date().toLocaleTimeString();
 
@@ -41,7 +56,81 @@
 			empty.style.display = 'none';
 			entries.forEach(h => {
 				const li = document.createElement('li');
-				li.textContent = `${h.hostId || 'host'} — last: ${formatDate(h.ts)} • OS: ${h.osVersion || '—'} • CPU: ${Math.round(h.cpuPercent||0)}% • RAM: ${Math.round(h.memPercent||0)}% • C free: ${Math.round(h.diskCPercent||0)}% • Uptime: ${fmtIntSecToHhMm(h.uptimeSec)}`;
+				const row = document.createElement('div');
+				row.className = 'host-row';
+				const idSpan = document.createElement('div');
+				idSpan.className = 'host-id';
+				idSpan.textContent = h.hostId || 'host';
+				const chips = document.createElement('div');
+				chips.className = 'chips';
+
+				// severity helpers
+				const now = Date.now();
+				const lastMs = h.ts ? (new Date(h.ts)).getTime() : 0;
+				const deltaSec = lastMs ? Math.max(0, Math.round((now - lastMs)/1000)) : null;
+				const sev = (val, goodLow, warnHigh, invert=false) => {
+					if (val === null || val === undefined) return 'warn';
+					let v = Number(val);
+					if (isNaN(v)) return 'warn';
+					if (invert) v = 100 - v; // interpret "free %" as inverse load
+					if (v <= goodLow) return 'ok';
+					if (v <= warnHigh) return 'warn';
+					return 'bad';
+				};
+
+				// Last seen
+				const lastChip = document.createElement('span');
+				lastChip.className = 'chip ' + (deltaSec === null ? 'warn' :
+					(deltaSec <= 120 ? 'ok' : (deltaSec <= 300 ? 'warn' : 'bad')));
+				appendDotAndText(lastChip, `Last: ${formatDate(h.ts)}`);
+				chips.appendChild(lastChip);
+
+				// OS
+				const osChip = document.createElement('span');
+				osChip.className = 'chip mono';
+				osChip.textContent = `OS: ${h.osVersion || '—'}`;
+				chips.appendChild(osChip);
+
+				// Uptime
+				const upChip = document.createElement('span');
+				upChip.className = 'chip mono';
+				upChip.textContent = `Uptime: ${fmtIntSecToHhMm(h.uptimeSec)}`;
+				chips.appendChild(upChip);
+
+				// CPU
+				const cpu = Math.round(h.cpuPercent || 0);
+				const cpuChip = document.createElement('span');
+				cpuChip.className = 'chip ' + sev(cpu, 50, 80, false);
+				appendDotAndText(cpuChip, `CPU: ${cpu}%`);
+				chips.appendChild(cpuChip);
+
+				// RAM
+				const ram = Math.round(h.memPercent || 0);
+				const ramChip = document.createElement('span');
+				ramChip.className = 'chip ' + sev(ram, 50, 80, false);
+				appendDotAndText(ramChip, `RAM: ${ram}%`);
+				chips.appendChild(ramChip);
+
+				// Disk C free (invert severity: low free -> worse)
+				const cfree = Math.round(h.diskCPercent || 0);
+				const diskChip = document.createElement('span');
+				// good when free >= 30% (invert => load <= 70), warn 15-30, bad < 15
+				// we implement via thresholds on free directly
+				const diskSev = (val) => {
+					if (val === null || val === undefined) return 'warn';
+					const v = Number(val);
+					if (isNaN(v)) return 'warn';
+					if (v >= 30) return 'ok';
+					if (v >= 15) return 'warn';
+					return 'bad';
+				};
+				diskChip.className = 'chip ' + diskSev(cfree);
+				appendDotAndText(diskChip, `C free: ${cfree}%`);
+				chips.appendChild(diskChip);
+
+				row.appendChild(idSpan);
+				row.appendChild(chips);
+				li.appendChild(row);
 				list.appendChild(li);
 			});
 		}

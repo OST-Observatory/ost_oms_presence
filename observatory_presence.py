@@ -83,15 +83,17 @@ def parse_float(value, default=0.0, min_value=None, max_value=None):
 def require_token(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
+        # Dev mode: when SECRET_TOKEN is empty, do not require auth
+        if not SECRET_TOKEN:
+            return fn(*args, **kwargs)
         # Prefer Authorization header Bearer token; allow 'token' in form/json as fallback
         auth_header = request.headers.get('Authorization', '')
         token_value = ''
         if auth_header.startswith('Bearer '):
             token_value = auth_header.split(' ', 1)[1]
-        elif request.is_json and request.json:
-            token_value = request.json.get('token', '')
         else:
-            token_value = request.values.get('token', '')
+            json_data = request.get_json(silent=True) or {}
+            token_value = json_data.get('token') or request.values.get('token', '')
         if not SECRET_TOKEN or token_value != SECRET_TOKEN:
             abort(401)
         return fn(*args, **kwargs)
@@ -161,23 +163,55 @@ def host_status():
 @require_token
 def start():
     # can be called by autostart client or manual form
-    user = request.values.get('user') or request.json and request.json.get('user') or request.remote_addr
-    target = request.values.get('target') or (request.json and request.json.get('target')) or ''
+    json_data = request.get_json(silent=True) or {}
+    user = request.values.get('user') or json_data.get('user') or request.remote_addr
+    target = request.values.get('target') or json_data.get('target') or ''
+    # planned duration/end (multiple inputs supported)
+    planned_minutes_raw = request.values.get('planned_minutes') or json_data.get('planned_minutes')
+    planned_hours_raw = request.values.get('planned_hours') or json_data.get('planned_hours')
+    planned_end_iso = request.values.get('planned_end') or json_data.get('planned_end')
+    planned_minutes = parse_int(planned_minutes_raw, default=0, min_value=0)
+    planned_hours = parse_float(planned_hours_raw, default=0.0, min_value=0.0)
     with state_lock:
         if state.get('occupied'):
             return jsonify({'ok': False, 'msg': 'Bereits belegt', 'state': state}), 409
         state['occupied'] = True
         state['user'] = user
         state['target'] = target
-        state['start'] = now_iso()
-        state['last_heartbeat'] = now_iso()
+        start_iso = now_iso()
+        state['start'] = start_iso
+        state['last_heartbeat'] = start_iso
+        # compute/store planned_end if provided
+        planned_end = None
+        if planned_end_iso:
+            # accept as-is (should be ISO UTC)
+            planned_end = planned_end_iso
+        else:
+            # derive from hours/minutes
+            total_minutes = 0
+            if planned_hours and planned_hours > 0:
+                total_minutes = int(round(planned_hours * 60))
+                state['planned_hours'] = planned_hours
+            elif planned_minutes and planned_minutes > 0:
+                total_minutes = planned_minutes
+                state['planned_minutes'] = planned_minutes
+            if total_minutes > 0:
+                try:
+                    base = datetime.fromisoformat(start_iso.replace('Z',''))
+                except Exception:
+                    base = datetime.utcnow()
+                end_dt = base + timedelta(minutes=total_minutes)
+                planned_end = end_dt.isoformat() + 'Z'
+        if planned_end:
+            state['planned_end'] = planned_end
         save_state()
     return jsonify({'ok': True, 'state': state})
 
 @app.route('/heartbeat', methods=['POST'])
 @require_token
 def heartbeat():
-    user = request.json.get('user') if request.json else request.values.get('user')
+    json_data = request.get_json(silent=True) or {}
+    user = json_data.get('user') or request.values.get('user')
     with state_lock:
         if not state.get('occupied'):
             return jsonify({'ok': False, 'msg': 'Kein aktiver Nutzer'}), 404
