@@ -80,6 +80,27 @@
 			<ul id="tel-list" class="hosts"></ul>
 			<p id="tel-empty" class="muted">No telescope status available.</p>
 		</section>
+
+		<section class="card card-span logbook">
+			<h2>Observation log</h2>
+			<p id="logbook-summary" class="muted">Loading…</p>
+			<div class="logbook-scroll">
+				<table class="logbook-table">
+					<thead>
+						<tr>
+							<th>Start</th>
+							<th>End</th>
+							<th>Duration</th>
+							<th>User</th>
+							<th>Target / note</th>
+							<th>Reason</th>
+						</tr>
+					</thead>
+					<tbody id="logbook-body"></tbody>
+				</table>
+			</div>
+			<p id="logbook-empty" class="muted" hidden>No completed sessions yet.</p>
+		</section>
 	</main>
 
 	<footer class="container footer">

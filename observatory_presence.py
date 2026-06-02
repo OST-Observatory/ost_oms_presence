@@ -12,12 +12,29 @@ import json
 import hmac
 import logging
 from functools import wraps
+from uuid import uuid4
 
 log = logging.getLogger(__name__)
 
 SECRET_TOKEN = os.getenv('SECRET_TOKEN', '')
 ALLOW_OPEN_API = os.getenv('ALLOW_OPEN_API', '').strip().lower() in ('1', 'true', 'yes', 'on')
 DATA_FILE = os.getenv('DATA_FILE', 'presence.json')
+
+
+def _default_session_log_file():
+    data_path = os.path.abspath(DATA_FILE)
+    data_dir = os.path.dirname(data_path)
+    if data_dir:
+        return os.path.join(data_dir, 'session_log.json')
+    return 'session_log.json'
+
+
+SESSION_LOG_FILE = os.getenv('SESSION_LOG_FILE', _default_session_log_file())
+try:
+    SESSION_LOG_DEFAULT_LIMIT = int(os.getenv('SESSION_LOG_DEFAULT_LIMIT', '100'))
+except ValueError:
+    SESSION_LOG_DEFAULT_LIMIT = 100
+SESSION_LOG_MAX_LIMIT = 500
 BASE_PATH = os.getenv('BASE_PATH', '')
 CAMERA_MEDIA_DIR = os.getenv('CAMERA_MEDIA_DIR', '/var/lib/observatory_cameras')
 CAMERA_MEDIA_FILES = frozenset({
@@ -52,12 +69,15 @@ _static_url_path = (BASE_PATH + '/static') if BASE_PATH else '/static'
 app = Flask(__name__, static_url_path=_static_url_path, static_folder='static', template_folder='templates')
 
 state_lock = threading.Lock()
+log_lock = threading.Lock()
 data_dir = os.path.dirname(os.path.abspath(DATA_FILE))
-if data_dir and not os.path.exists(data_dir):
-    try:
-        os.makedirs(data_dir, exist_ok=True)
-    except OSError:
-        pass
+log_dir = os.path.dirname(os.path.abspath(SESSION_LOG_FILE))
+for directory in (data_dir, log_dir):
+    if directory and not os.path.exists(directory):
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError:
+            pass
 if os.path.exists(DATA_FILE):
     try:
         with open(DATA_FILE, 'r', encoding='utf-8') as f:
@@ -161,9 +181,101 @@ def clear_session_fields():
         state.pop(key, None)
 
 
-def end_session():
+def _load_session_log():
+    if not os.path.exists(SESSION_LOG_FILE):
+        return {'entries': []}
+    try:
+        with open(SESSION_LOG_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        log.exception('Failed to read session log %s', SESSION_LOG_FILE)
+        return {'entries': []}
+    if not isinstance(data, dict):
+        return {'entries': []}
+    entries = data.get('entries')
+    if not isinstance(entries, list):
+        data['entries'] = []
+    return data
+
+
+def _save_session_log(log_data):
+    tmp_path = SESSION_LOG_FILE + '.tmp'
+    try:
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(log_data, f, default=str)
+        os.replace(tmp_path, SESSION_LOG_FILE)
+    except Exception:
+        log.exception('Failed to save session log to %s', SESSION_LOG_FILE)
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _build_session_log_entry(end_reason, end_iso=None):
+    start_iso = state.get('start')
+    if not start_iso:
+        return None
+    end_iso = end_iso or now_iso()
+    start_dt = parse_iso_utc(start_iso)
+    end_dt = parse_iso_utc(end_iso)
+    duration_sec = 0
+    if start_dt and end_dt:
+        duration_sec = max(0, int((end_dt - start_dt).total_seconds()))
+    planned_end = state.get('planned_end')
+    return {
+        'id': str(uuid4()),
+        'user': state.get('user') or '',
+        'target': state.get('target') or '',
+        'start': start_iso,
+        'end': end_iso,
+        'durationSec': duration_sec,
+        'plannedEnd': planned_end or None,
+        'endReason': end_reason,
+    }
+
+
+def append_session_log(end_reason, end_iso=None):
+    """Append completed session to SESSION_LOG_FILE. Caller must hold state_lock."""
+    entry = _build_session_log_entry(end_reason, end_iso=end_iso)
+    if not entry:
+        return
+    with log_lock:
+        log_data = _load_session_log()
+        log_data.setdefault('entries', []).append(entry)
+        _save_session_log(log_data)
+    log.info(
+        'Session log: user=%s target=%s duration=%ss reason=%s',
+        entry['user'],
+        entry['target'],
+        entry['durationSec'],
+        end_reason,
+    )
+
+
+def end_session(end_reason='release', end_iso=None):
+    if state.get('start'):
+        append_session_log(end_reason, end_iso=end_iso)
     clear_session_fields()
     state['occupied'] = False
+
+
+def get_session_log_entries(limit=None):
+    limit = SESSION_LOG_DEFAULT_LIMIT if limit is None else limit
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = SESSION_LOG_DEFAULT_LIMIT
+    limit = max(1, min(limit, SESSION_LOG_MAX_LIMIT))
+    with log_lock:
+        log_data = _load_session_log()
+        entries = log_data.get('entries') or []
+        if not isinstance(entries, list):
+            entries = []
+        total = len(entries)
+        page = list(reversed(entries[-limit:]))
+    return page, total
 
 
 def prune_stale_monitoring(now=None):
@@ -259,6 +371,13 @@ def index():
 def status():
     with state_lock:
         return jsonify(state)
+
+
+@app.route('/logbook')
+def logbook():
+    limit = request.args.get('limit')
+    entries, total = get_session_log_entries(limit=limit)
+    return jsonify({'entries': entries, 'total': total, 'limit': len(entries)})
 
 
 @app.route('/telescope_status', methods=['POST'])
@@ -381,7 +500,7 @@ def start():
         if state.get('occupied') and not force:
             return jsonify({'ok': False, 'msg': 'Already occupied', 'state': state}), 409
         if force and state.get('occupied'):
-            clear_session_fields()
+            end_session('force')
         state['occupied'] = True
         state['user'] = user
         state['target'] = target
@@ -428,7 +547,7 @@ def heartbeat():
 @require_token
 def release():
     with state_lock:
-        end_session()
+        end_session('release')
         save_state()
     return jsonify({'ok': True})
 
@@ -450,7 +569,7 @@ def cleaner_loop():
                         state.get('last_heartbeat'),
                         HEARTBEAT_TIMEOUT,
                     )
-                    end_session()
+                    end_session('timeout')
                     save_state()
             prune_counter += 1
             if prune_counter >= 6:

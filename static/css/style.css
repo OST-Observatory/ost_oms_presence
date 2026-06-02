@@ -94,4 +94,25 @@ h1, h2 { margin: 0 0 10px 0; }
 	margin-bottom: 10px;
 }
 
+.logbook-scroll { overflow-x: auto; }
+.logbook-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+.logbook-table th,
+.logbook-table td {
+	padding: 8px 10px;
+	border-bottom: 1px solid var(--border);
+	text-align: left;
+	vertical-align: top;
+}
+.logbook-table th { color: var(--muted); font-weight: 600; }
+.logbook-table tbody tr:hover { background: var(--bg-alt); }
+.logbook-table td.mono { font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+	.logbook-table { font-size: 0.82rem; }
+	.logbook-table th, .logbook-table td { padding: 6px 8px; }
+}
+
 

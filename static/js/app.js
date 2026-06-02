@@ -16,6 +16,15 @@
 		const m = Math.floor((sec%3600)/60);
 		return `${h}h ${m}m`;
 	}
+	function formatEndReason(reason) {
+		const map = {
+			release: 'Released',
+			timeout: 'Timeout',
+			force: 'Overwritten',
+		};
+		return map[reason] || reason || '—';
+	}
+
 	function fmtMinutes(mins) {
 		if (!mins || mins <= 0) return '—';
 		const h = Math.floor(mins/60);
@@ -251,6 +260,57 @@
 		}
 	}
 
+	function renderLogbook(data) {
+		const body = $('logbook-body');
+		const empty = $('logbook-empty');
+		const summary = $('logbook-summary');
+		if (!body) return;
+		const entries = (data && data.entries) || [];
+		const total = (data && data.total) || 0;
+		if (summary) {
+			const shown = entries.length;
+			summary.textContent = shown === total
+				? `Showing ${shown} session(s).`
+				: `Showing ${shown} of ${total} session(s).`;
+		}
+		body.innerHTML = '';
+		if (entries.length === 0) {
+			if (empty) empty.hidden = false;
+			return;
+		}
+		if (empty) empty.hidden = true;
+		entries.forEach((e) => {
+			const tr = document.createElement('tr');
+			const cells = [
+				formatDate(e.start),
+				formatDate(e.end),
+				fmtIntSecToHhMm(e.durationSec),
+				e.user || '—',
+				e.target || '—',
+				formatEndReason(e.endReason),
+			];
+			cells.forEach((text, i) => {
+				const td = document.createElement('td');
+				td.textContent = text;
+				if (i === 2) td.className = 'mono';
+				tr.appendChild(td);
+			});
+			body.appendChild(tr);
+		});
+	}
+
+	async function fetchLogbook() {
+		try {
+			const res = await fetch(`${basePath}/logbook`, { cache: 'no-store' });
+			if (!res.ok) throw new Error(res.statusText);
+			renderLogbook(await res.json());
+		} catch (e) {
+			console.error('logbook fetch failed', e);
+			const summary = $('logbook-summary');
+			if (summary) summary.textContent = 'Could not load session log.';
+		}
+	}
+
 	async function fetchStatus() {
 		try {
 			const res = await fetch(`${basePath}/status`, { cache: 'no-store' });
@@ -275,7 +335,9 @@
 
 	// initial + poll
 	fetchStatus();
+	fetchLogbook();
 	setInterval(fetchStatus, 15000);
+	setInterval(fetchLogbook, 15000);
 	setInterval(refreshCameras, 45000);
 })();
 

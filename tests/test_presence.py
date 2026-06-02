@@ -43,7 +43,7 @@ def test_cleaner_end_session_preserves_telescope():
         op.state['user'] = 'carol'
         op.state['last_heartbeat'] = '2000-01-01T00:00:00Z'
         op.state['telescope'] = {'tel1': {'hostId': 'tel1', 'ts': op.now_iso(), 'raHours': 1, 'decDeg': 2}}
-        op.end_session()
+        op.end_session('timeout')
         op.save_state()
         assert op.state['occupied'] is False
         assert 'user' not in op.state
@@ -78,6 +78,52 @@ def test_health(client):
     r = client.get('/health')
     assert r.status_code == 200
     assert r.get_json() == {'ok': True}
+
+
+def test_session_log_on_release(client):
+    client.post(
+        '/start',
+        data={'user': 'dana', 'target': 'saturn', 'planned_hours': '1'},
+        headers=auth_headers(),
+    )
+    client.post('/release', headers=auth_headers())
+    r = client.get('/logbook')
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['total'] == 1
+    entry = body['entries'][0]
+    assert entry['user'] == 'dana'
+    assert entry['target'] == 'saturn'
+    assert entry['endReason'] == 'release'
+    assert entry['id']
+    assert entry['durationSec'] >= 0
+
+
+def test_force_logs_previous_session(client):
+    client.post('/start', data={'user': 'first'}, headers=auth_headers())
+    r = client.post(
+        '/start',
+        data={'user': 'second', 'target': 'moon', 'force': 'true'},
+        headers=auth_headers(),
+    )
+    assert r.status_code == 200
+    body = client.get('/logbook').get_json()
+    assert body['total'] == 1
+    assert body['entries'][0]['user'] == 'first'
+    assert body['entries'][0]['endReason'] == 'force'
+    status = client.get('/status').get_json()
+    assert status['user'] == 'second'
+
+
+def test_logbook_limit(client):
+    for i in range(3):
+        client.post('/start', data={'user': f'u{i}'}, headers=auth_headers())
+        client.post('/release', headers=auth_headers())
+    r = client.get('/logbook?limit=2')
+    body = r.get_json()
+    assert body['total'] == 3
+    assert len(body['entries']) == 2
+    assert body['entries'][0]['user'] == 'u2'
 
 
 def test_atomic_save_writes_valid_json(client, tmp_path, monkeypatch):

@@ -194,7 +194,7 @@ Dashboard UI:
 - Mobile‑first, English-only, auto-refreshes every ~15 seconds via `/status` polling.
 - **Live cameras** at the top (outdoor/indoor JPGs load immediately; images refresh every ~45s).
 - **Outdoor videos** (today / yesterday WebM, manual play).
-- Sections: Current Session (shows planned end if provided), Host Status, Observed Region (placeholder).
+- Sections: Current Session, Host Status, Observed Region, **Session log** (completed sessions).
 - Manual connect form is removed; sessions start via the client.
 
 Script: `autostart_client_prompt.ps1`
@@ -320,6 +320,8 @@ Basic Auth and the bearer token are **not** interchangeable: agents do not use t
 | `SECRET_TOKEN` | *(required in production)* | Bearer token for POST endpoints |
 | `ALLOW_OPEN_API` | unset | Set to `1` for local dev only (allows empty token) |
 | `DATA_FILE` | `presence.json` | Persistent JSON state path |
+| `SESSION_LOG_FILE` | `<dir of DATA_FILE>/session_log.json` | Append-only session history |
+| `SESSION_LOG_DEFAULT_LIMIT` | `100` | Default rows returned by `GET /logbook` (max 500) |
 | `BASE_PATH` | empty | URL prefix, e.g. `/ost_status` |
 | `HEARTBEAT_TIMEOUT` | `90` | Auto-release session after missing heartbeats (seconds) |
 | `HOST_STATUS_TTL_SEC` | `3600` | Remove stale host entries after this age |
@@ -327,6 +329,16 @@ Basic Auth and the bearer token are **not** interchangeable: agents do not use t
 | `CAMERA_MEDIA_DIR` | `/var/lib/observatory_cameras` | Local dev fallback for camera files |
 
 Production: set `SECRET_TOKEN` in `observatory_presence.env` and **do not** set `ALLOW_OPEN_API`.
+
+---
+## Session log
+
+When a session ends (`/release`, heartbeat timeout, or `force` override), an entry is appended to `SESSION_LOG_FILE` with:
+
+- `id` (UUID, for future edit/delete)
+- `user`, `target`, `start`, `end`, `durationSec`, `plannedEnd`, `endReason` (`release` | `timeout` | `force`)
+
+The dashboard loads `GET /logbook` (newest first, default last 100 entries). All entries are kept (no cap). Optional query: `GET /logbook?limit=50`.
 
 ---
 ## Security notes
@@ -349,7 +361,7 @@ Production: set `SECRET_TOKEN` in `observatory_presence.env` and **do not** set 
 - `deploy/scripts/setup_data_dir.sh` (creates data dir with permissions)
 - `deploy/scripts/setup_camera_media_dir.sh` (creates webcam/video upload directory)
 - `requirements.txt` / `requirements-astropy.txt` (Python dependencies)
-- `presence.json.example` (state file template; real `presence.json` is gitignored)
+- `presence.json.example` / `session_log.json.example` (templates; real files are gitignored)
 - `deploy/tests/http_tests.sh` (basic E2E test)
 - `deploy/apache/camera_redirect.conf.example` (legacy livefeed redirect)
 - `tests/test_presence.py` (pytest unit tests)

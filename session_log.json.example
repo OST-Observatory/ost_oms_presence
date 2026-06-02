@@ -1,0 +1,14 @@
+{
+  "entries": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "user": "observer",
+      "target": "M42",
+      "start": "2025-06-01T20:00:00Z",
+      "end": "2025-06-01T22:30:00Z",
+      "durationSec": 9000,
+      "plannedEnd": "2025-06-01T23:00:00Z",
+      "endReason": "release"
+    }
+  ]
+}
