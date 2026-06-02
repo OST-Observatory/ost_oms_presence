@@ -17,6 +17,46 @@
 	</header>
 
 	<main class="container grid">
+		<section class="card card-span cameras" id="cameras">
+			<h2>Live cameras</h2>
+			<div class="camera-grid">
+				<figure class="camera-figure">
+					<img id="cam-outdoor" class="camera-img"
+						src="{{ media_base }}/outdoor_current.jpg"
+						alt="OST outdoor camera" loading="eager" decoding="async">
+					<figcaption>Outdoor</figcaption>
+				</figure>
+				<figure class="camera-figure">
+					<img id="cam-indoor" class="camera-img"
+						src="{{ media_base }}/indoor_current.jpg"
+						alt="OST indoor camera" loading="eager" decoding="async">
+					<figcaption>Indoor</figcaption>
+				</figure>
+			</div>
+		</section>
+
+		<section class="card card-span camera-videos">
+			<details>
+				<summary>Outdoor videos</summary>
+				<div class="camera-grid">
+					<figure class="camera-figure">
+						<video class="camera-video" controls preload="metadata"
+							poster="{{ media_base }}/outdoor_current.jpg">
+							<source src="{{ media_base }}/outdoor_video.webm" type="video/webm">
+						</video>
+						<figcaption>Today</figcaption>
+					</figure>
+					<figure class="camera-figure">
+						<video class="camera-video" controls preload="metadata"
+							poster="{{ media_base }}/outdoor_current.jpg">
+							<source src="{{ media_base }}/yesterday_outdoor_video.webm" type="video/webm">
+						</video>
+						<figcaption>Yesterday</figcaption>
+					</figure>
+				</div>
+			</details>
+		</section>
+
 		<section class="card">
 			<h2>Current Session</h2>
 			<div class="kv">
@@ -26,12 +66,7 @@
 				<div>Planned end</div><div id="sess-planned">—</div>
 				<div>Last heartbeat</div><div id="sess-hb">—</div>
 			</div>
-			<div class="actions">
-				<form id="release-form" action="{{ (base_path or '') + '/release' }}" method="post">
-					<button type="submit" class="btn" id="release-btn" title="Admin only">Release (admin)</button>
-				</form>
-				<p class="hint">Manual connect is disabled. The client starts sessions automatically.</p>
-			</div>
+			<!-- <p class="hint">(The client starts sessions automatically.)</p> -->
 		</section>
 
 		<section class="card">
@@ -44,10 +79,6 @@
 			<h2>Observed Region</h2>
 			<ul id="tel-list" class="hosts"></ul>
 			<p id="tel-empty" class="muted">No telescope status available.</p>
-			<div id="observed-region" class="placeholder">
-				<p>Space reserved for a rich panel with target information, charts, and sky previews.</p>
-				<p class="muted">Coming soon.</p>
-			</div>
 		</section>
 	</main>
 

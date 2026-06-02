@@ -1,0 +1,2 @@
+-r requirements.txt
+astropy>=6.0,<8

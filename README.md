@@ -11,9 +11,9 @@ This README covers:
 ## Local quickstart (Windows, for testing)
 - Windows 11 with Python 3 and pip
 
-1) Install Flask:
+1) Install dependencies:
 ```powershell
-pip install flask
+pip install -r requirements.txt
 ```
 2) Place `observatory_presence.py` somewhere (e.g., `C:\observatory_presence`) and run:
 ```powershell
@@ -33,7 +33,7 @@ python observatory_presence.py
 
 Architecture:
 - Apache serves HTTPS and reverse proxies to Gunicorn via a UNIX socket (`/run/observatory_presence/gunicorn.sock`).
-- Gunicorn runs the Flask app with a single worker (the app has a cleaner thread).
+- Gunicorn runs the Flask app with **one worker** (required while using file-backed state and the in-process cleaner thread).
 - The app uses a shared-secret token to protect mutating endpoints (`/start`, `/heartbeat`, `/release`). The token is expected in the `Authorization: Bearer <TOKEN>` header.
 - Application state persists to `presence.json` (default path configurable).
 
@@ -57,13 +57,15 @@ Copy the repository contents into `/mnt/data/observatory_presence` (owner `ost-s
 
 Option A (system Python, simple):
 ```bash
-sudo pip3 install --upgrade flask gunicorn
+sudo pip3 install -r /mnt/data/observatory_presence/requirements.txt
 ```
 Option B (recommended: venv):
 ```bash
 sudo -u ost-status python3 -m venv /mnt/data/observatory_presence/.venv
 sudo -u ost-status /mnt/data/observatory_presence/.venv/bin/pip install --upgrade pip
-sudo -u ost-status /mnt/data/observatory_presence/.venv/bin/pip install flask gunicorn
+sudo -u ost-status /mnt/data/observatory_presence/.venv/bin/pip install -r /mnt/data/observatory_presence/requirements.txt
+# Optional J2000 conversion on the server:
+# sudo -u ost-status /mnt/data/observatory_presence/.venv/bin/pip install -r /mnt/data/observatory_presence/requirements-astropy.txt
 ```
 If using venv, adjust `ExecStart` in the systemd unit to point to the venv’s `gunicorn` binary.
 
@@ -116,6 +118,20 @@ Alias /ost_status/static /mnt/data/observatory_presence/static
 # Do not proxy static requests
 ProxyPass        /ost_status/static !
 
+# Webcam stills and videos (uploaded from the observatory)
+Alias /ost_status/media/cameras /var/lib/observatory_cameras
+<Directory /var/lib/observatory_cameras>
+    Require all granted
+    Options -Indexes
+    <FilesMatch "\.(?i:jpg|jpeg)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+    <FilesMatch "\.(?i:webm)$">
+        Header set Cache-Control "max-age=3600"
+    </FilesMatch>
+</Directory>
+ProxyPass        /ost_status/media !
+
 # Proxy app to Gunicorn over UNIX socket
 ProxyPass        /ost_status unix:/run/observatory_presence/gunicorn.sock|http://localhost/
 ProxyPassReverse /ost_status http://localhost/
@@ -124,6 +140,21 @@ ProxyPassReverse /ost_status http://localhost/
 Notes:
 - Ensure your app is started with `BASE_PATH=/ost_status` so generated static URLs are `/ost_status/static/...`.
 - Locally (without Apache), `BASE_PATH` can be empty; Flask will serve static files under `/static/`.
+
+### 6b) Webcam media directory
+Create the upload target and point your existing camera upload scripts at it:
+```bash
+sudo bash /mnt/data/observatory_presence/deploy/scripts/setup_camera_media_dir.sh <upload-user>
+```
+Expected filenames (same as the legacy livefeed page):
+- `outdoor_current.jpg`, `indoor_current.jpg`
+- `outdoor_video.webm`, `yesterday_outdoor_video.webm`
+
+URLs on the dashboard (under `/ost_status`):
+- `https://<host>/ost_status/media/cameras/outdoor_current.jpg`
+- etc.
+
+If you migrate from the old camera page, copy or symlink existing files into `/var/lib/observatory_cameras` and retire the old vhost path (optional redirect to `/ost_status/`).
 
 ### 7) Fail2ban (optional, recommended)
 Blocks repeated unauthorized attempts (multiple 401s on POST).
@@ -161,6 +192,8 @@ curl -sS -X POST https://observatory.example.org/ost_status/release \
 
 Dashboard UI:
 - Mobile‑first, English-only, auto-refreshes every ~15 seconds via `/status` polling.
+- **Live cameras** at the top (outdoor/indoor JPGs load immediately; images refresh every ~45s).
+- **Outdoor videos** (today / yesterday WebM, manual play).
 - Sections: Current Session (shows planned end if provided), Host Status, Observed Region (placeholder).
 - Manual connect form is removed; sessions start via the client.
 
@@ -270,11 +303,40 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 ```
 
 ---
+## Access control (two layers)
+
+| Layer | Who | Mechanism |
+|-------|-----|-----------|
+| Browser | Humans | Apache HTTP Basic Auth (`.htaccess` on `/ost_status`) |
+| Agents | Windows scripts | `Authorization: Bearer` + `SECRET_TOKEN` |
+
+Basic Auth and the bearer token are **not** interchangeable: agents do not use the dashboard password.
+
+---
+## Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SECRET_TOKEN` | *(required in production)* | Bearer token for POST endpoints |
+| `ALLOW_OPEN_API` | unset | Set to `1` for local dev only (allows empty token) |
+| `DATA_FILE` | `presence.json` | Persistent JSON state path |
+| `BASE_PATH` | empty | URL prefix, e.g. `/ost_status` |
+| `HEARTBEAT_TIMEOUT` | `90` | Auto-release session after missing heartbeats (seconds) |
+| `HOST_STATUS_TTL_SEC` | `3600` | Remove stale host entries after this age |
+| `TELESCOPE_STATUS_TTL_SEC` | `2400` | Remove stale telescope entries after this age |
+| `CAMERA_MEDIA_DIR` | `/var/lib/observatory_cameras` | Local dev fallback for camera files |
+
+Production: set `SECRET_TOKEN` in `observatory_presence.env` and **do not** set `ALLOW_OPEN_API`.
+
+---
 ## Security notes
 - Always use HTTPS on Apache.
-- Use a long random `SECRET_TOKEN` and rotate periodically.
+- Use a long random `SECRET_TOKEN` and rotate periodically; `OBS_PRESENCE_TOKEN` must be set on Windows clients (no script fallback).
+- The app refuses to start without `SECRET_TOKEN` unless `ALLOW_OPEN_API=1` (dev only).
+- Browser access is additionally protected by `.htaccess` Basic Auth.
 - Consider IP allowlisting for POST endpoints if appropriate.
 - fail2ban can reduce brute-force attempts; for burst control add `mod_evasive` or app-level rate-limiting if needed.
+- Optional: exempt `GET /ost_status/health` from Basic Auth for uptime monitoring (see commented block in `deploy/apache/observatory_presence.conf`).
 
 ---
 ## Files of interest
@@ -285,7 +347,12 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 - `deploy/apache/observatory_presence.conf` (Apache vhost)
 - `deploy/fail2ban/filter.d/observatory_presence.conf` and `deploy/fail2ban/jail.d/observatory_presence.local`
 - `deploy/scripts/setup_data_dir.sh` (creates data dir with permissions)
+- `deploy/scripts/setup_camera_media_dir.sh` (creates webcam/video upload directory)
+- `requirements.txt` / `requirements-astropy.txt` (Python dependencies)
+- `presence.json.example` (state file template; real `presence.json` is gitignored)
 - `deploy/tests/http_tests.sh` (basic E2E test)
+- `deploy/apache/camera_redirect.conf.example` (legacy livefeed redirect)
+- `tests/test_presence.py` (pytest unit tests)
 - `deploy/windows/host_status_agent.ps1` (Windows host metrics agent)
 - `deploy/windows/telescope_agent.ps1` (Windows ASCOM telescope agent)
 
@@ -294,39 +361,54 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 
 Quick run:
 ```bash
-# 1) Ensure dependencies
-pip install flask
-
-# 2) Make sure no token is set (local endpoints will be open)
-unset SECRET_TOKEN 2>/dev/null || set SECRET_TOKEN=
-
-# 3) Start the app (BASE_PATH should be empty locally)
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+export ALLOW_OPEN_API=1
+export DATA_FILE="$(pwd)/presence.json"
 python observatory_presence.py
 ```
 
 Open `http://localhost:5000`. Locally, static assets are served under `/static/` and the dashboard polls `/status` every ~15s.
 
-Simulate a session without the Windows client:
+Production-like local run (token required):
 ```bash
-curl -sS -X POST http://localhost:5000/start -d "user=alice&target=saturn"
-curl -sS http://localhost:5000/status | jq .
-# Optional: release
-curl -sS -X POST http://localhost:5000/release
+export SECRET_TOKEN="devtoken"
+unset ALLOW_OPEN_API
+export DATA_FILE="$(pwd)/presence.json"
+python observatory_presence.py
+curl -sS -X POST http://localhost:5000/start \
+  -H "Authorization: Bearer devtoken" \
+  -d "user=alice&target=saturn"
+```
+
+Local webcam files (optional):
+```bash
+mkdir -p ./camera_media
+export CAMERA_MEDIA_DIR="$(pwd)/camera_media"
+# copy or symlink outdoor_current.jpg, indoor_current.jpg, *.webm into camera_media/
+export ALLOW_OPEN_API=1
+python observatory_presence.py
+```
+With `BASE_PATH` empty, camera URLs are `/media/cameras/...` (served by Flask). In production, Apache serves `/ost_status/media/cameras/...` instead.
+
+Unit tests:
+```bash
+.venv/bin/pip install pytest
+.venv/bin/python -m pytest tests/ -v
 ```
 
 Host status test (optional):
 ```bash
-BASE_URL=http://localhost:5000 TOKEN=ignored \
+BASE_URL=http://localhost:5000 TOKEN=devtoken \
   bash deploy/tests/host_status_test.sh
 ```
 
-Notes:
-- When `SECRET_TOKEN` is empty, auth is disabled for local testing (mutating endpoints are open). In production, set `SECRET_TOKEN` and call mutating endpoints with the bearer token.
-- If you want to fully mimic production locally, you can export:
-  ```bash
-  export SECRET_TOKEN="devtoken"
-  export DATA_FILE="./presence.json"
-  export HEARTBEAT_TIMEOUT=90
-  export BASE_PATH=""
-  ```
-  and call protected endpoints with `-H "Authorization: Bearer devtoken"`.
+---
+## Deployment checklist (after upgrades)
+
+1. Install dependencies: `pip install -r requirements.txt` (and optionally `requirements-astropy.txt`).
+2. Set `SECRET_TOKEN` in `config/observatory_presence.env`; ensure `ALLOW_OPEN_API` is **not** set.
+3. `systemctl restart observatory_presence` and `systemctl reload apache2`.
+4. Roll out updated `autostart_client_prompt.ps1`; verify `OBS_PRESENCE_TOKEN` on each client.
+5. Run `BASE_URL=https://<host>/ost_status TOKEN=<token> bash deploy/tests/http_tests.sh`.
+6. Optional: redirect legacy camera URL using `deploy/apache/camera_redirect.conf.example`.

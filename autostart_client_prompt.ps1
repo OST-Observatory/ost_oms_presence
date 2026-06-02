@@ -12,11 +12,11 @@ $Server = $env:OBS_PRESENCE_SERVER
 if (-not $Server -or $Server -eq "") {
     $Server = "https://observatory.example.org/ost_status"
 }
-# Secret token (prefer environment variable OBS_PRESENCE_TOKEN)
+# Secret token (required; set OBS_PRESENCE_TOKEN for the Task Scheduler account)
 $Token = $env:OBS_PRESENCE_TOKEN
 if (-not $Token -or $Token -eq "") {
-    # Fallback placeholder; replace or set OBS_PRESENCE_TOKEN in the user env
-    $Token = "CHANGE_ME_LONG_RANDOM"
+    Write-Host "ERROR: OBS_PRESENCE_TOKEN is not set. Configure it for this user account (setx OBS_PRESENCE_TOKEN ...)." -ForegroundColor Red
+    exit 1
 }
 $Headers = @{ Authorization = "Bearer $Token" }
 
@@ -163,11 +163,23 @@ try {
 }
 catch {
     Write-Host "Error starting session: $_"
-    # Only retry with force on HTTP 409 Conflict (session already occupied)
     $statusCode = $null
+    $occupant = "another user"
     try {
         if ($_.Exception -and $_.Exception.Response) {
             $statusCode = [int]$_.Exception.Response.StatusCode
+            $stream = $_.Exception.Response.GetResponseStream()
+            if ($stream) {
+                $reader = New-Object System.IO.StreamReader($stream)
+                $errBody = $reader.ReadToEnd()
+                $reader.Close()
+                if ($errBody) {
+                    $parsed = $errBody | ConvertFrom-Json
+                    if ($parsed.state -and $parsed.state.user) {
+                        $occupant = $parsed.state.user
+                    }
+                }
+            }
         } elseif ($_.Exception.StatusCode) {
             $statusCode = [int]$_.Exception.StatusCode
         }
@@ -175,7 +187,16 @@ catch {
     if ($statusCode -ne 409) {
         exit 1
     }
-    Write-Host "Retrying with force override due to 409 Conflict..."
+    $answer = [System.Windows.MessageBox]::Show(
+        "The observatory is already in use by $occupant.`n`nOverwrite and start your session?",
+        "Session occupied",
+        "YesNo",
+        "Warning"
+    )
+    if ($answer -ne "Yes") {
+        Write-Host "Cancelled; existing session was not overwritten."
+        exit 1
+    }
     try {
         $body['force'] = $true
         Invoke-RestMethod -Method Post -Uri "$Server/start" -Headers $Headers -Body $body

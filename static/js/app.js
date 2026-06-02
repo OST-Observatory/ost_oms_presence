@@ -31,10 +31,20 @@
 		el.appendChild(document.createTextNode(text));
 	}
 
+	function setStatusUnavailable(message) {
+		const pill = $('status-pill');
+		const txt = $('status-text');
+		pill.classList.remove('ok', 'bad');
+		pill.classList.add('warn');
+		txt.textContent = message || 'Unavailable';
+		$('last-refresh').textContent = 'Last refresh: failed';
+	}
+
 	function render(data) {
 		const occupied = !!data.occupied;
 		const pill = $('status-pill');
 		const txt = $('status-text');
+		pill.classList.remove('warn');
 		pill.classList.toggle('ok', !occupied);
 		pill.classList.toggle('bad', occupied);
 		txt.textContent = occupied ? 'Occupied' : 'Free';
@@ -249,12 +259,24 @@
 			render(data);
 		} catch (e) {
 			console.error('status fetch failed', e);
+			setStatusUnavailable('Unavailable');
 		}
+	}
+
+	function refreshCameras() {
+		const t = Date.now();
+		['cam-outdoor', 'cam-indoor'].forEach((id) => {
+			const img = $(id);
+			if (!img) return;
+			const base = img.getAttribute('src').split('?')[0];
+			img.src = `${base}?t=${t}`;
+		});
 	}
 
 	// initial + poll
 	fetchStatus();
 	setInterval(fetchStatus, 15000);
+	setInterval(refreshCameras, 45000);
 })();
 
 

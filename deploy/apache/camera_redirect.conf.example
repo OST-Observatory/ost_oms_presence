@@ -1,0 +1,4 @@
+# Optional: redirect legacy camera livefeed URL to the dashboard
+# Include from your main vhost or site config.
+#
+# Redirect permanent /old/cameras/path https://observatory.example.org/ost_status/#cameras
