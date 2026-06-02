@@ -1,0 +1,8 @@
+Inter typeface
+Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+
+Licensed under the SIL Open Font License, Version 1.1.
+https://openfontlicense.org
+
+Web fonts in this directory were subset (latin) and converted to WOFF2
+for local hosting with the dashboard (no external font CDN).

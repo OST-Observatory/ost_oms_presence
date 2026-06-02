@@ -360,6 +360,7 @@ The dashboard loads `GET /logbook` (newest first, default last 100 entries). All
 - `deploy/fail2ban/filter.d/observatory_presence.conf` and `deploy/fail2ban/jail.d/observatory_presence.local`
 - `deploy/scripts/setup_data_dir.sh` (creates data dir with permissions)
 - `deploy/scripts/setup_camera_media_dir.sh` (creates webcam/video upload directory)
+- `static/fonts/` (Inter WOFF2, self-hosted; see `LICENSE.txt`)
 - `requirements.txt` / `requirements-astropy.txt` (Python dependencies)
 - `presence.json.example` / `session_log.json.example` (templates; real files are gitignored)
 - `deploy/tests/http_tests.sh` (basic E2E test)
