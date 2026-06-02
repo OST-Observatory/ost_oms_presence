@@ -155,7 +155,7 @@
 			});
 		}
 
-		// Telescope chips (Observed Region)
+		// Telescope chips (Telescope Status)
 		const tel = data.telescope || {};
 		const telList = $('tel-list');
 		const telEmpty = $('tel-empty');
@@ -338,7 +338,7 @@
 	fetchLogbook();
 	setInterval(fetchStatus, 15000);
 	setInterval(fetchLogbook, 15000);
-	setInterval(refreshCameras, 45000);
+	setInterval(refreshCameras, 2000);
 })();
 
 

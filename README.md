@@ -194,7 +194,7 @@ Dashboard UI:
 - Mobile‑first, English-only, auto-refreshes every ~15 seconds via `/status` polling.
 - **Live cameras** at the top (outdoor/indoor JPGs load immediately; images refresh every ~45s).
 - **Outdoor videos** (today / yesterday WebM, manual play).
-- Sections: Current Session, Host Status, Observed Region, **Session log** (completed sessions).
+- Sections: Current Session, Host Status, Telescope Status, **Session log** (completed sessions).
 - Manual connect form is removed; sessions start via the client.
 
 Script: `autostart_client_prompt.ps1`
