@@ -88,8 +88,13 @@
 
 html, body { height: 100%; }
 
+html {
+	overflow-x: clip;
+}
+
 body {
 	margin: 0;
+	overflow-x: clip;
 	background: var(--bg);
 	background-image:
 		radial-gradient(ellipse 120% 80% at 50% -20%, var(--accent-weak), transparent 55%);
@@ -165,12 +170,14 @@ h2 {
 
 .grid {
 	display: grid;
-	grid-template-columns: 1fr;
+	grid-template-columns: minmax(0, 1fr);
 	gap: 16px;
+	width: 100%;
+	min-width: 0;
 }
 
 @media (min-width: 720px) {
-	.grid { grid-template-columns: 1fr 1fr; }
+	.grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 	.card-span { grid-column: 1 / -1; }
 }
 
@@ -180,6 +187,9 @@ h2 {
 	border-radius: var(--radius);
 	padding: 18px 20px;
 	box-shadow: var(--shadow-md);
+	min-width: 0;
+	max-width: 100%;
+	overflow-wrap: anywhere;
 }
 
 .kv {
@@ -253,6 +263,7 @@ h2 {
 	justify-content: space-between;
 	gap: 10px;
 	flex-wrap: wrap;
+	min-width: 0;
 }
 
 .host-id {
@@ -266,6 +277,8 @@ h2 {
 	align-items: center;
 	gap: 8px;
 	flex-wrap: wrap;
+	min-width: 0;
+	flex: 1 1 auto;
 }
 
 .chip {
@@ -352,6 +365,7 @@ h2 {
 .camera-img,
 .camera-video {
 	width: 100%;
+	max-width: 100%;
 	height: auto;
 	display: block;
 	border-radius: var(--radius-sm);
@@ -394,13 +408,17 @@ h2 {
 
 .logbook-scroll {
 	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+	max-width: 100%;
+	min-width: 0;
 	border: 1px solid var(--border);
 	border-radius: var(--radius-sm);
 	background: var(--bg-subtle);
 }
 
 .logbook-table {
-	width: 100%;
+	width: max-content;
+	min-width: 100%;
 	border-collapse: collapse;
 	font-size: 0.875rem;
 }
@@ -444,10 +462,14 @@ h2 {
 
 @media (max-width: 720px) {
 	.container { padding: 12px 14px; }
+	.header { flex-direction: column; align-items: flex-start; }
 	h1 { font-size: 1.25rem; }
+	.card { padding: 14px 16px; }
 	.kv { grid-template-columns: 1fr; gap: 4px; }
 	.kv > div:nth-child(odd) { padding-top: 8px; }
 	.kv > div:nth-child(even) { padding-bottom: 4px; }
+	.host-row { flex-direction: column; align-items: flex-start; }
+	.chips { flex: none; width: 100%; }
 	.logbook-table { font-size: 0.8rem; }
 	.logbook-table th,
 	.logbook-table td { padding: 8px 10px; }
