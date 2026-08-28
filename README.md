@@ -33,6 +33,7 @@ python observatory_presence.py
 
 Architecture:
 - Apache serves HTTPS and reverse proxies to Gunicorn via a UNIX socket (`/run/observatory_presence/gunicorn.sock`).
+- Browser access (GET/HEAD) is limited to campus / VPN prefixes and HTTP Basic Auth; POSTs are limited to the observatory client host(s).
 - Gunicorn runs the Flask app with **one worker** (required while using file-backed state and the in-process cleaner thread).
 - The app uses a shared-secret token to protect mutating endpoints (`/start`, `/heartbeat`, `/release`). The token is expected in the `Authorization: Bearer <TOKEN>` header.
 - Application state persists to `presence.json` (default path configurable).
@@ -41,8 +42,8 @@ Architecture:
 - Debian/Ubuntu with Apache:
   ```bash
   sudo apt update
-  sudo apt install -y apache2 python3 python3-pip python3-venv fail2ban
-  sudo a2enmod proxy proxy_http headers ssl
+  sudo apt install -y apache2 apache2-utils python3 python3-pip python3-venv fail2ban
+  sudo a2enmod proxy proxy_http headers ssl auth_basic authn_file
   ```
 - TLS certificate (e.g., via Let's Encrypt) present on the server.
 
@@ -101,45 +102,95 @@ Install the site configuration:
 ```bash
 sudo cp /mnt/data/observatory_presence/deploy/apache/observatory_presence.conf /etc/apache2/sites-available/
 sudo nano /etc/apache2/sites-available/observatory_presence.conf
-# Update ServerName and certificate paths.
+# Update ServerName, certificate paths, campus/VPN prefixes, and the POST allowlist host.
+sudo htpasswd -c /etc/apache2/ost_status.htpasswd dashboarduser
 sudo a2ensite observatory_presence
 sudo systemctl reload apache2
 ```
 
-Static files via Apache + reverse proxy:
+Create further dashboard users with `sudo htpasswd /etc/apache2/ost_status.htpasswd <username>` (omit `-c` so the file is not overwritten). Restrict the htpasswd file (`chmod 640`, group `www-data`).
+
+Static files, media, access control, and reverse proxy (see `deploy/apache/observatory_presence.conf` for the full vhost). Replace the documentation addresses (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `192.0.2.10`) with your campus / VPN prefixes and observatory client host:
 ```apache
-# Serve static assets directly (adjust path if different)
+# Serve static assets directly via Apache
 Alias /ost_status/static /mnt/data/observatory_presence/static
+
 <Directory /mnt/data/observatory_presence/static>
-    Require all granted
-    Options -Indexes
+        Options -Indexes
+
+        <RequireAny>
+                Require ip 192.0.2.0/24
+                Require ip 198.51.100.0/24
+                Require ip 203.0.113.0/24
+        </RequireAny>
 </Directory>
 
 # Do not proxy static requests
-ProxyPass        /ost_status/static !
+ProxyPass /ost_status/static !
 
 # Webcam stills and videos (uploaded from the observatory)
 Alias /ost_status/media/cameras /var/lib/observatory_cameras
-<Directory /var/lib/observatory_cameras>
-    Require all granted
-    Options -Indexes
-    <FilesMatch "\.(?i:jpg|jpeg)$">
-        Header set Cache-Control "no-cache"
-    </FilesMatch>
-    <FilesMatch "\.(?i:webm)$">
-        Header set Cache-Control "max-age=3600"
-    </FilesMatch>
-</Directory>
-ProxyPass        /ost_status/media !
 
-# Proxy app to Gunicorn over UNIX socket
+<Directory /var/lib/observatory_cameras>
+        Options -Indexes
+
+        <RequireAny>
+                Require ip 192.0.2.0/24
+                Require ip 198.51.100.0/24
+                Require ip 203.0.113.0/24
+        </RequireAny>
+
+        <FilesMatch "\.(?i:jpg|jpeg)$">
+                Header set Cache-Control "no-cache"
+        </FilesMatch>
+
+        <FilesMatch "\.(?i:webm)$">
+                Header set Cache-Control "max-age=3600"
+        </FilesMatch>
+</Directory>
+
+ProxyPass /ost_status/media !
+
+# GET/HEAD: campus / VPN + Basic Auth
+# POST: observatory status client host only
+<Location /ost_status>
+        AuthType Basic
+        AuthName "Observatory Dashboard"
+        AuthUserFile /etc/apache2/ost_status.htpasswd
+
+        <Limit GET HEAD>
+                <RequireAll>
+                        Require valid-user
+
+                        <RequireAny>
+                                Require ip 192.0.2.0/24
+                                Require ip 198.51.100.0/24
+                                Require ip 203.0.113.0/24
+                        </RequireAny>
+                </RequireAll>
+        </Limit>
+
+        <Limit POST>
+                Require ip 192.0.2.10
+        </Limit>
+</Location>
+
+# Proxy to Gunicorn over UNIX socket
 ProxyPass        /ost_status unix:/run/observatory_presence/gunicorn.sock|http://localhost/
 ProxyPassReverse /ost_status http://localhost/
+
+<Location /ost_status/status>
+        <LimitExcept GET>
+                Require all denied
+        </LimitExcept>
+</Location>
 ```
 
 Notes:
 - Ensure your app is started with `BASE_PATH=/ost_status` so generated static URLs are `/ost_status/static/...`.
 - Locally (without Apache), `BASE_PATH` can be empty; Flask will serve static files under `/static/`.
+- Keep the campus / VPN prefixes in sync across the `Directory` and `Location` blocks.
+- POSTs (session start/heartbeat/release, host/telescope status) must come from the observatory client host listed in `<Limit POST>`. The Flask app still requires `Authorization: Bearer`.
 
 ### 6b) Webcam media directory
 Create the upload target and point your existing camera upload scripts at it:
@@ -173,9 +224,9 @@ sudo apt install -y jq
 BASE_URL=https://observatory.example.org/ost_status TOKEN=<your_token> \
   bash /mnt/data/observatory_presence/deploy/tests/http_tests.sh
 ```
-Manual curl:
+Manual curl (GET/HEAD from campus / VPN also needs Basic Auth: `curl -u user:pass …`; POST only succeeds from the observatory client host):
 ```bash
-curl -sSL https://observatory.example.org/ost_status/status | jq .
+curl -sSL -u user:pass https://observatory.example.org/ost_status/status | jq .
 curl -sS -X POST https://observatory.example.org/ost_status/start \
   -H "Authorization: Bearer <your_token>" \
   -d "user=alice&target=saturn&planned_hours=2.5"
@@ -303,14 +354,15 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 ```
 
 ---
-## Access control (two layers)
+## Access control (three layers)
 
 | Layer | Who | Mechanism |
 |-------|-----|-----------|
-| Browser | Humans | Apache HTTP Basic Auth (`.htaccess` on `/ost_status`) |
-| Agents | Windows scripts | `Authorization: Bearer` + `SECRET_TOKEN` |
+| Network | Browsers (GET/HEAD) | Apache `Require ip` — campus / VPN prefixes only |
+| Browser | Humans | Apache HTTP Basic Auth (`AuthUserFile` on `/ost_status`) |
+| Agents | Observatory Windows scripts (POST) | Apache `Require ip` (observatory host) **and** `Authorization: Bearer` + `SECRET_TOKEN` |
 
-Basic Auth and the bearer token are **not** interchangeable: agents do not use the dashboard password.
+Basic Auth and the bearer token are **not** interchangeable: agents do not use the dashboard password. Static files and camera media are campus / VPN only; they are not a substitute for locking down the app.
 
 ---
 ## Environment variables
@@ -345,8 +397,9 @@ The dashboard loads `GET /logbook` (newest first, default last 100 entries). All
 - Always use HTTPS on Apache.
 - Use a long random `SECRET_TOKEN` and rotate periodically; `OBS_PRESENCE_TOKEN` must be set on Windows clients (no script fallback).
 - The app refuses to start without `SECRET_TOKEN` unless `ALLOW_OPEN_API=1` (dev only).
-- Browser access is additionally protected by `.htaccess` Basic Auth.
-- Consider IP allowlisting for POST endpoints if appropriate.
+- Browser GET/HEAD is limited to campus / VPN prefixes **and** HTTP Basic Auth (`/etc/apache2/ost_status.htpasswd`).
+- POST is limited to the observatory client host(s); do not allow campus browsers to POST.
+- Keep campus / VPN prefixes identical in the static, media, and `/ost_status` `Location` blocks.
 - fail2ban can reduce brute-force attempts; for burst control add `mod_evasive` or app-level rate-limiting if needed.
 - Optional: exempt `GET /ost_status/health` from Basic Auth for uptime monitoring (see commented block in `deploy/apache/observatory_presence.conf`).
 
@@ -421,7 +474,7 @@ BASE_URL=http://localhost:5000 TOKEN=devtoken \
 
 1. Install dependencies: `pip install -r requirements.txt` (and optionally `requirements-astropy.txt`).
 2. Set `SECRET_TOKEN` in `config/observatory_presence.env`; ensure `ALLOW_OPEN_API` is **not** set.
-3. `systemctl restart observatory_presence` and `systemctl reload apache2`.
+3. Copy/update `deploy/apache/observatory_presence.conf` (campus / VPN prefixes, observatory POST host, `ost_status.htpasswd`). Restart the app and reload Apache.
 4. Roll out updated `autostart_client_prompt.ps1`; verify `OBS_PRESENCE_TOKEN` on each client.
-5. Run `BASE_URL=https://<host>/ost_status TOKEN=<token> bash deploy/tests/http_tests.sh`.
+5. From campus / VPN: `curl -u user:pass https://<host>/ost_status/status`. From the observatory host: `BASE_URL=https://<host>/ost_status TOKEN=<token> bash deploy/tests/http_tests.sh`.
 6. Optional: redirect legacy camera URL using `deploy/apache/camera_redirect.conf.example`.
