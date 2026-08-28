@@ -80,6 +80,18 @@ def test_health(client):
     assert r.get_json() == {'ok': True}
 
 
+def test_datenschutz_page(client):
+    r = client.get('/datenschutz')
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert 'Informationen zum Datenschutz' in html
+    assert 'Universität Potsdam' in html
+    assert 'DS-GVO' in html
+    dashboard = client.get('/')
+    assert dashboard.status_code == 200
+    assert '/datenschutz' in dashboard.get_data(as_text=True)
+
+
 def test_session_log_on_release(client):
     client.post(
         '/start',

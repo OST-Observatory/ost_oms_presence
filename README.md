@@ -112,10 +112,17 @@ Create further dashboard users with `sudo htpasswd /etc/apache2/ost_status.htpas
 
 Static files, media, access control, and reverse proxy (see `deploy/apache/observatory_presence.conf` for the full vhost). Replace the documentation addresses (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `192.0.2.10`) with your campus / VPN prefixes and observatory client host:
 ```apache
-# Serve static assets directly via Apache
+# Serve static assets directly via Apache.
+# CSS/fonts are public so /ost_status/datenschutz can load without campus access.
+# JS stays behind campus / VPN + Basic Auth via <Location /ost_status>.
 Alias /ost_status/static /mnt/data/observatory_presence/static
 
 <Directory /mnt/data/observatory_presence/static>
+        Options -Indexes
+        Require all granted
+</Directory>
+
+<Directory /mnt/data/observatory_presence/static/js>
         Options -Indexes
 
         <RequireAny>
@@ -175,6 +182,27 @@ ProxyPass /ost_status/media !
         </Limit>
 </Location>
 
+# Public privacy notice (QR code / posted sheet) — no campus IP, no Basic Auth
+<LocationMatch "^/ost_status/datenschutz/?$">
+        AuthType None
+        <Limit GET HEAD>
+                Require all granted
+        </Limit>
+        <LimitExcept GET HEAD>
+                Require all denied
+        </LimitExcept>
+</LocationMatch>
+
+<Location /ost_status/static/css>
+        AuthType None
+        Require all granted
+</Location>
+
+<Location /ost_status/static/fonts>
+        AuthType None
+        Require all granted
+</Location>
+
 # Proxy to Gunicorn over UNIX socket
 ProxyPass        /ost_status unix:/run/observatory_presence/gunicorn.sock|http://localhost/
 ProxyPassReverse /ost_status http://localhost/
@@ -189,8 +217,9 @@ ProxyPassReverse /ost_status http://localhost/
 Notes:
 - Ensure your app is started with `BASE_PATH=/ost_status` so generated static URLs are `/ost_status/static/...`.
 - Locally (without Apache), `BASE_PATH` can be empty; Flask will serve static files under `/static/`.
-- Keep the campus / VPN prefixes in sync across the `Directory` and `Location` blocks.
+- Keep the campus / VPN prefixes in sync across the media, JS, and `/ost_status` `Location` blocks.
 - POSTs (session start/heartbeat/release, host/telescope status) must come from the observatory client host listed in `<Limit POST>`. The Flask app still requires `Authorization: Bearer`.
+- `GET /ost_status/datenschutz` is public (no campus IP, no Basic Auth) so it can be linked from a QR code on the posted camera notice. Camera images and the dashboard stay restricted.
 
 ### 6b) Webcam media directory
 Create the upload target and point your existing camera upload scripts at it:
@@ -361,8 +390,9 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 | Network | Browsers (GET/HEAD) | Apache `Require ip` — campus / VPN prefixes only |
 | Browser | Humans | Apache HTTP Basic Auth (`AuthUserFile` on `/ost_status`) |
 | Agents | Observatory Windows scripts (POST) | Apache `Require ip` (observatory host) **and** `Authorization: Bearer` + `SECRET_TOKEN` |
+| Public | Camera privacy notice | `GET /ost_status/datenschutz` (and its CSS/fonts) — no IP allowlist, no Basic Auth |
 
-Basic Auth and the bearer token are **not** interchangeable: agents do not use the dashboard password. Static files and camera media are campus / VPN only; they are not a substitute for locking down the app.
+Basic Auth and the bearer token are **not** interchangeable: agents do not use the dashboard password. Camera media and dashboard JS remain campus / VPN only. The privacy page is intentionally reachable from the public internet so a QR code on the posted information sheet can open it.
 
 ---
 ## Environment variables
@@ -398,14 +428,16 @@ The dashboard loads `GET /logbook` (newest first, default last 100 entries). All
 - Use a long random `SECRET_TOKEN` and rotate periodically; `OBS_PRESENCE_TOKEN` must be set on Windows clients (no script fallback).
 - The app refuses to start without `SECRET_TOKEN` unless `ALLOW_OPEN_API=1` (dev only).
 - Browser GET/HEAD is limited to campus / VPN prefixes **and** HTTP Basic Auth (`/etc/apache2/ost_status.htpasswd`).
+- `GET /ost_status/datenschutz` is the public exception (QR code / posted camera notice). It must not expose live images or the dashboard.
 - POST is limited to the observatory client host(s); do not allow campus browsers to POST.
-- Keep campus / VPN prefixes identical in the static, media, and `/ost_status` `Location` blocks.
+- Keep campus / VPN prefixes identical in the media, JS, and `/ost_status` `Location` blocks.
 - fail2ban can reduce brute-force attempts; for burst control add `mod_evasive` or app-level rate-limiting if needed.
 - Optional: exempt `GET /ost_status/health` from Basic Auth for uptime monitoring (see commented block in `deploy/apache/observatory_presence.conf`).
 
 ---
 ## Files of interest
 - `observatory_presence.py` (Flask app)
+- `templates/index.html` / `templates/datenschutz.html` (dashboard and public camera privacy notice)
 - `autostart_client_prompt.ps1` (Windows client)
 - `deploy/systemd/observatory_presence.service` (systemd unit)
 - `deploy/systemd/observatory_presence.env.example` (environment variables)

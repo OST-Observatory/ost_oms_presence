@@ -367,6 +367,14 @@ def index():
     )
 
 
+@app.route('/datenschutz')
+def datenschutz():
+    return render_template(
+        'datenschutz.html',
+        base_path=BASE_PATH or '',
+    )
+
+
 @app.route('/status')
 def status():
     with state_lock:
