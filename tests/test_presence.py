@@ -87,6 +87,8 @@ def test_datenschutz_page(client):
     assert 'Informationen zum Datenschutz' in html
     assert 'Universität Potsdam' in html
     assert 'DS-GVO' in html
+    assert 'Von der Innenkamera wird keine fortlaufende Videoaufnahme erzeugt' in html
+    assert 'Universitätsnetzes' in html
     dashboard = client.get('/')
     assert dashboard.status_code == 200
     assert '/datenschutz' in dashboard.get_data(as_text=True)
