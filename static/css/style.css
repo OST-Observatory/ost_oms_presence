@@ -355,8 +355,12 @@ h2 {
 	color: var(--accent);
 }
 
+.legal-page .container {
+	max-width: 1120px;
+}
+
 .legal-main {
-	max-width: 800px;
+	width: 100%;
 }
 
 .legal-prose h2 {
@@ -383,6 +387,7 @@ h2 {
 
 .legal-prose p {
 	margin: 0 0 0.85rem;
+	max-width: none;
 	color: var(--text-secondary);
 }
 
