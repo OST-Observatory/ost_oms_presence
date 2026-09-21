@@ -203,9 +203,11 @@ ProxyPass /ost_status/media !
         Require all granted
 </Location>
 
-# Proxy to Gunicorn over UNIX socket
-ProxyPass        /ost_status unix:/run/observatory_presence/gunicorn.sock|http://localhost/
-ProxyPassReverse /ost_status http://localhost/
+# Proxy to Gunicorn over UNIX socket.
+# The hostname after the "|" is a dummy (never resolved), but mod_proxy uses it
+# to identify the worker -- so it must be unique per socket-backed app.
+ProxyPass        /ost_status unix:/run/observatory_presence/gunicorn.sock|http://ost-status.invalid/
+ProxyPassReverse /ost_status http://ost-status.invalid/
 
 <Location /ost_status/status>
         <LimitExcept GET>
@@ -218,6 +220,8 @@ Notes:
 - Ensure your app is started with `BASE_PATH=/ost_status` so generated static URLs are `/ost_status/static/...`.
 - Locally (without Apache), `BASE_PATH` can be empty; Flask will serve static files under `/static/`.
 - Keep the campus / VPN prefixes in sync across the media, JS, and `/ost_status` `Location` blocks.
+- Keep the `<Directory>` paths in sync with the `Alias` targets. A `<Directory>` block whose path no longer matches the aliased directory is silently inactive, which can quietly drop the campus / VPN restriction on `static/js`.
+- If other apps on the same server are also proxied to UNIX sockets, give every `ProxyPass` a **unique** dummy hostname (e.g. `http://ost-status.invalid/`, `http://ost-inventory.invalid/`). Two UDS backends sharing `http://localhost/` collide on a single mod_proxy worker, and requests are routed to whichever backend was declared first in the configuration. The usual symptom is the *other* app's 404 page appearing under `/ost_status` while `systemctl status observatory_presence` still looks healthy.
 - POSTs (session start/heartbeat/release, host/telescope status) must come from the observatory client host listed in `<Limit POST>`. The Flask app still requires `Authorization: Bearer`.
 - `GET /ost_status/datenschutz` is public (no campus IP, no Basic Auth) so it can be linked from a QR code on the posted camera notice. Camera images and the dashboard stay restricted.
 
