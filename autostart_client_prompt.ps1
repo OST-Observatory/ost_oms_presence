@@ -1,4 +1,5 @@
-# This script prompts for name and optional note at login, then starts heartbeats.
+# This script prompts for a name (first name is enough) and an optional note at
+# login, then starts heartbeats.
 # Flow:
 # 1. Task Scheduler starts this script at user logon.
 # 2. GUI asks "Who is observing?" and an optional note.
@@ -42,7 +43,7 @@ Add-Type -AssemblyName PresentationFramework | Out-Null
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Observatory Presence" Height="310" Width="680" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+        Title="Observatory Presence" Height="360" Width="680" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
   <Grid Margin="12">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
@@ -52,12 +53,14 @@ $xaml = @"
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
     <TextBlock Text="Who is observing this session?" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
-    <TextBlock Grid.Row="1" Text="This helps others see who is currently using the observatory and what target/activity is planned." TextWrapping="Wrap" Margin="0,0,0,12"/>
+    <TextBlock Grid.Row="1" TextWrapping="Wrap" Margin="0,0,0,12"
+               Text="This helps others see who is currently using the observatory and what target/activity is planned. First name is enough."/>
 
     <StackPanel Grid.Row="2" Orientation="Vertical">
       <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
         <TextBlock Text="Name:" Width="110" VerticalAlignment="Center"/>
-        <TextBox x:Name="NameBox" Width="440"/>
+        <TextBox x:Name="NameBox" Width="200"/>
+        <TextBlock Text="First name is enough." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" TextWrapping="Wrap" Width="320"/>
       </StackPanel>
       <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
         <TextBlock Text="Target / note:" Width="110" VerticalAlignment="Center"/>
@@ -76,7 +79,7 @@ $xaml = @"
     </StackPanel>
 
     <TextBlock Grid.Row="3" Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,10"
-               Text="Tip: This window only appears at login. The client will keep the session alive with periodic heartbeats until you disconnect."/>
+               Text="Tip: This window only appears at login. The client will keep the session alive with periodic heartbeats until you disconnect. What you enter above is shown on the status dashboard and kept in the observing session log."/>
 
     <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
       <Button x:Name="CancelBtn" Content="Cancel" Width="90" Margin="0,0,8,0"/>
@@ -98,7 +101,7 @@ $CancelBtn = $window.FindName("CancelBtn")
 $result = $null
 $StartBtn.Add_Click({
     if ([string]::IsNullOrWhiteSpace($NameBox.Text)) {
-        [System.Windows.MessageBox]::Show("Please enter your name.", "Observatory Presence", "OK", "Warning") | Out-Null
+        [System.Windows.MessageBox]::Show("Please enter a name. A first name is enough - for a guided group, e.g. 'Schulklasse'.", "Observatory Presence", "OK", "Warning") | Out-Null
         return
     }
     $script:result = [PSCustomObject]@{

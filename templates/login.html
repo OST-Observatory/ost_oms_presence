@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="robots" content="noindex">
+	<title>Sign in — Observatory Dashboard</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="login-page">
+	<main class="container login-main">
+		<section class="card login-card">
+			<h1>Observatory Dashboard</h1>
+			<p class="hint">Please sign in with your wiki account.</p>
+
+			{% if error %}
+			<p class="login-error" role="alert">{{ error }}</p>
+			{% endif %}
+
+			<form method="post" action="{{ base_path }}/login" class="login-form">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				{% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
+				<label for="username">Username</label>
+				<input type="text" id="username" name="username" value="{{ username }}"
+					autocomplete="username" autocapitalize="none" autocorrect="off"
+					spellcheck="false" required autofocus>
+
+				<label for="password">Password</label>
+				<input type="password" id="password" name="password"
+					autocomplete="current-password" required>
+
+				<button type="submit" class="btn">Sign in</button>
+			</form>
+		</section>
+
+		<footer class="footer">
+			<a class="footer-link" href="{{ base_path }}/privacy">Privacy notice</a>
+			<a class="footer-link" href="{{ base_path }}/datenschutz">Cameras (DE)</a>
+		</footer>
+	</main>
+</body>
+</html>

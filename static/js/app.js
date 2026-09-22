@@ -299,9 +299,21 @@
 		});
 	}
 
+	// Set once the session has expired, so the other poller does not fire a
+	// second redirect while this one is already navigating away.
+	let redirecting = false;
+
+	function goToLogin() {
+		if (redirecting) return true;
+		redirecting = true;
+		window.location.href = `${basePath}/login`;
+		return true;
+	}
+
 	async function fetchLogbook() {
 		try {
 			const res = await fetch(`${basePath}/logbook`, { cache: 'no-store' });
+			if (res.status === 401) return goToLogin();
 			if (!res.ok) throw new Error(res.statusText);
 			renderLogbook(await res.json());
 		} catch (e) {
@@ -314,6 +326,7 @@
 	async function fetchStatus() {
 		try {
 			const res = await fetch(`${basePath}/status`, { cache: 'no-store' });
+			if (res.status === 401) return goToLogin();
 			if (!res.ok) throw new Error(res.statusText);
 			const data = await res.json();
 			render(data);

@@ -3,16 +3,30 @@ Observatory Presence / Reservation lightweight system
 Single-file Flask app + helper scripts
 """
 
-from flask import Flask, jsonify, request, render_template, abort, send_from_directory
+from flask import (
+    Flask,
+    abort,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+)
 from datetime import datetime, timedelta, timezone
 import threading
 import os
+import secrets
 import sys
 import json
 import hmac
+import time
 import logging
 from functools import wraps
+from urllib.parse import quote, urlparse
 from uuid import uuid4
+
+import ldap_auth
 
 log = logging.getLogger(__name__)
 
@@ -65,8 +79,88 @@ if not SECRET_TOKEN and not ALLOW_OPEN_API:
         'Set ALLOW_OPEN_API=1 only for local development.'
     )
 
+# ---------------------------------------------------------------------------
+# Dashboard login (LDAP)
+#
+# Browsers authenticate with a session cookie; the agent POST endpoints keep
+# using SECRET_TOKEN. The two are never interchangeable.
+# ---------------------------------------------------------------------------
+
+ALLOW_ANONYMOUS_DASHBOARD = os.getenv('ALLOW_ANONYMOUS_DASHBOARD', '').strip().lower() in (
+    '1', 'true', 'yes', 'on'
+)
+SESSION_SECRET = os.getenv('SESSION_SECRET', '')
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', '1').strip().lower() not in (
+    '0', 'false', 'no', 'off'
+)
+TRUST_PROXY_HEADERS = os.getenv('TRUST_PROXY_HEADERS', '').strip().lower() in (
+    '1', 'true', 'yes', 'on'
+)
+
+try:
+    SESSION_LIFETIME_HOURS = float(os.getenv('SESSION_LIFETIME_HOURS', '12'))
+except ValueError:
+    SESSION_LIFETIME_HOURS = 12.0
+
+try:
+    LOGIN_MAX_ATTEMPTS = int(os.getenv('LOGIN_MAX_ATTEMPTS', '5'))
+except ValueError:
+    LOGIN_MAX_ATTEMPTS = 5
+
+try:
+    LOGIN_LOCKOUT_SECONDS = int(os.getenv('LOGIN_LOCKOUT_SECONDS', '300'))
+except ValueError:
+    LOGIN_LOCKOUT_SECONDS = 300
+
+ldap_config = ldap_auth.LdapConfig.from_env()
+authenticate = ldap_auth.authenticate
+
+if not ALLOW_ANONYMOUS_DASHBOARD:
+    if not SESSION_SECRET:
+        sys.exit(
+            'SESSION_SECRET is required in production (signs the login cookie). '
+            'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(48))" '
+            'Set ALLOW_ANONYMOUS_DASHBOARD=1 only for local development.'
+        )
+    if not ldap_config.server_uri:
+        sys.exit(
+            'LDAP_SERVER_URI is required in production (dashboard login). '
+            'Set ALLOW_ANONYMOUS_DASHBOARD=1 only for local development.'
+        )
+    if not ldap_config.user_search_base:
+        sys.exit('LDAP_USER_SEARCH_BASE is required when LDAP_SERVER_URI is set.')
+    _tls_problem = ldap_auth.tls_problem(ldap_config)
+    if _tls_problem:
+        sys.exit(_tls_problem)
+
 _static_url_path = (BASE_PATH + '/static') if BASE_PATH else '/static'
 app = Flask(__name__, static_url_path=_static_url_path, static_folder='static', template_folder='templates')
+app.secret_key = SESSION_SECRET or secrets.token_urlsafe(48)
+app.config.update(
+    SESSION_COOKIE_NAME='ost_status_session',
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_SAMESITE='Lax',
+    # The app is mounted under BASE_PATH by the reverse proxy, so scope the
+    # cookie to that prefix instead of the whole host.
+    SESSION_COOKIE_PATH=BASE_PATH or '/',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=SESSION_LIFETIME_HOURS),
+)
+
+if TRUST_PROXY_HEADERS:
+    # Behind Apache, request.remote_addr is the proxy. Trust exactly one hop
+    # so rate limiting and logging see the real client.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+if ALLOW_ANONYMOUS_DASHBOARD:
+    log.warning('ALLOW_ANONYMOUS_DASHBOARD is set: the dashboard requires no login')
+elif not ldap_config.allowed_group_dns:
+    log.warning(
+        'LDAP_ALLOWED_GROUP_DNS is empty: every valid directory account can '
+        'open the dashboard'
+    )
 
 state_lock = threading.Lock()
 log_lock = threading.Lock()
@@ -318,6 +412,128 @@ def require_token(fn):
     return wrapper
 
 
+# --- Dashboard login -------------------------------------------------------
+
+login_lock = threading.Lock()
+# {(username, client_ip): [monotonic timestamps of failed attempts]}
+login_failures = {}
+
+
+def client_ip():
+    return request.remote_addr or '-'
+
+
+def csrf_token():
+    """Return the session CSRF token, creating one on first use."""
+    token = session.get('csrf')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['csrf'] = token
+    return token
+
+
+def csrf_ok():
+    expected = session.get('csrf')
+    if not expected:
+        return False
+    supplied = request.form.get('csrf_token', '')
+    return bool(supplied) and hmac.compare_digest(supplied, expected)
+
+
+def _failure_key(username):
+    return (username.strip().lower(), client_ip())
+
+
+def login_locked_out(username):
+    """True when this user/IP pair exhausted its attempts."""
+    if LOGIN_MAX_ATTEMPTS <= 0:
+        return False
+    cutoff = time.monotonic() - LOGIN_LOCKOUT_SECONDS
+    key = _failure_key(username)
+    with login_lock:
+        attempts = [t for t in login_failures.get(key, []) if t > cutoff]
+        if attempts:
+            login_failures[key] = attempts
+        else:
+            login_failures.pop(key, None)
+        return len(attempts) >= LOGIN_MAX_ATTEMPTS
+
+
+def record_login_failure(username):
+    cutoff = time.monotonic() - LOGIN_LOCKOUT_SECONDS
+    key = _failure_key(username)
+    with login_lock:
+        attempts = [t for t in login_failures.get(key, []) if t > cutoff]
+        attempts.append(time.monotonic())
+        login_failures[key] = attempts
+        # Keep the table from growing without bound on a long-running process.
+        if len(login_failures) > 1000:
+            for stale_key, stale in list(login_failures.items()):
+                if not [t for t in stale if t > cutoff]:
+                    login_failures.pop(stale_key, None)
+
+
+def clear_login_failures(username):
+    with login_lock:
+        login_failures.pop(_failure_key(username), None)
+
+
+def current_user():
+    """Return the logged-in user dict, or None.
+
+    The session carries an absolute expiry: refreshing the page does not
+    extend it.
+    """
+    if ALLOW_ANONYMOUS_DASHBOARD:
+        return session.get('user') or {'uid': 'anonymous', 'display_name': 'anonymous'}
+    user = session.get('user')
+    if not user:
+        return None
+    login_at = parse_iso_utc(session.get('login_at'))
+    if login_at is None:
+        return None
+    if (utc_now() - login_at).total_seconds() > SESSION_LIFETIME_HOURS * 3600:
+        return None
+    return user
+
+
+def safe_next_target(value):
+    """Accept only same-site relative paths, to avoid an open redirect."""
+    if not value or not value.startswith('/') or value.startswith('//'):
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme or parsed.netloc:
+        return None
+    return value
+
+
+def login_required(api=False):
+    """Require a dashboard session.
+
+    api=True answers 401 JSON (for the polling endpoints), otherwise the
+    browser is redirected to the login form.
+    """
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if current_user() is not None:
+                return fn(*args, **kwargs)
+            # Drop only the identity, not the whole session: a login form open
+            # in another tab must keep its CSRF token usable.
+            session.pop('user', None)
+            session.pop('login_at', None)
+            if api:
+                return jsonify({'ok': False, 'msg': 'login required'}), 401
+            target = request.full_path.rstrip('?') if request.query_string else request.path
+            login_url = (BASE_PATH or '') + '/login'
+            next_value = safe_next_target(target)
+            if next_value and next_value != '/':
+                login_url += '?next=' + quote(next_value, safe='/')
+            return redirect(login_url)
+        return wrapper
+    return decorator
+
+
 _cleaner_started = False
 
 
@@ -350,6 +566,7 @@ def health():
 
 
 @app.route('/media/cameras/<path:filename>')
+@login_required(api=True)
 def camera_media(filename):
     if filename not in CAMERA_MEDIA_FILES:
         abort(404)
@@ -358,12 +575,89 @@ def camera_media(filename):
     return send_from_directory(CAMERA_MEDIA_DIR, filename)
 
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user() is not None:
+        return redirect((BASE_PATH or '') + (safe_next_target(request.args.get('next')) or '/'))
+
+    def render_form(error=None, status=200, username=''):
+        response = render_template(
+            'login.html',
+            base_path=BASE_PATH or '',
+            csrf_token=csrf_token(),
+            next=safe_next_target(request.values.get('next')) or '',
+            error=error,
+            username=username,
+        )
+        return response, status
+
+    if request.method == 'GET':
+        return render_form()
+
+    if not csrf_ok():
+        # Usually a stale form after a restart, not an attack.
+        log.info('Login rejected: bad CSRF token from %s', client_ip())
+        return render_form('This form has expired. Please try again.', 400)
+
+    username = (request.form.get('username') or '').strip()
+    password = request.form.get('password') or ''
+
+    if login_locked_out(username):
+        log.warning('Login locked out for %r from %s', username, client_ip())
+        return render_form(
+            'Too many failed attempts. Please try again later.', 429, username
+        )
+
+    try:
+        user = authenticate(username, password, ldap_config)
+    except ldap_auth.LdapError:
+        log.exception('LDAP unavailable during login of %r', username)
+        return render_form(
+            'The directory service is currently unavailable.', 503, username
+        )
+
+    if user is None:
+        record_login_failure(username)
+        log.info('Login failed for %r from %s', username, client_ip())
+        # Deliberately generic: does not reveal whether the account exists or
+        # only the group membership is missing.
+        return render_form('Sign-in failed.', 401, username)
+
+    clear_login_failures(username)
+    session.clear()
+    session['user'] = user
+    session['login_at'] = now_iso()
+    session.permanent = True
+    csrf_token()
+    log.info(
+        'Login ok for %r (groups: %s) from %s',
+        user.get('uid'), user.get('groups') or [], client_ip(),
+    )
+    target = safe_next_target(request.form.get('next')) or '/'
+    return redirect((BASE_PATH or '') + target)
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    if not csrf_ok():
+        abort(400)
+    user = session.get('user') or {}
+    if user:
+        log.info('Logout for %r from %s', user.get('uid'), client_ip())
+    session.clear()
+    return redirect((BASE_PATH or '') + '/login')
+
+
 @app.route('/')
+@login_required()
 def index():
+    user = session.get('user') or {}
     return render_template(
         'index.html',
         base_path=BASE_PATH or '',
         media_base=camera_media_url_prefix(),
+        user=user,
+        csrf_token=csrf_token(),
     )
 
 
@@ -375,13 +669,28 @@ def datenschutz():
     )
 
 
+@app.route('/privacy')
+def privacy():
+    """Privacy notice for the dashboard itself (sign-in, session, session log).
+
+    Public on purpose: it has to be readable before signing in. The camera
+    surveillance has its own notice at /datenschutz.
+    """
+    return render_template(
+        'privacy.html',
+        base_path=BASE_PATH or '',
+    )
+
+
 @app.route('/status')
+@login_required(api=True)
 def status():
     with state_lock:
         return jsonify(state)
 
 
 @app.route('/logbook')
+@login_required(api=True)
 def logbook():
     limit = request.args.get('limit')
     entries, total = get_session_log_entries(limit=limit)
@@ -561,7 +870,6 @@ def release():
 
 
 def cleaner_loop():
-    import time
     prune_counter = 0
     while True:
         with state_lock:

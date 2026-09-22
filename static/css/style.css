@@ -98,6 +98,11 @@ body {
 	background: var(--bg);
 	background-image:
 		radial-gradient(ellipse 120% 80% at 50% -20%, var(--accent-weak), transparent 55%);
+	/* body is height:100%, so the gradient's positioning area is one viewport
+	   tall while the painting area is the whole document. Without no-repeat it
+	   tiles down a long page and the accent tint reappears as a band -- on the
+	   dashboard that lands around the logbook card and the footer. */
+	background-repeat: no-repeat;
 	color: var(--text);
 	font-family: var(--font);
 	font-size: 15px;
@@ -535,4 +540,96 @@ h2 {
 	.logbook-table { font-size: 0.8rem; }
 	.logbook-table th,
 	.logbook-table td { padding: 8px 10px; }
+}
+
+/* --- Login ------------------------------------------------------------- */
+
+.login-main {
+	min-height: 100%;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	gap: 16px;
+	max-width: 420px;
+}
+
+.login-card {
+	width: 100%;
+}
+
+.login-card h1 {
+	margin-bottom: 6px;
+}
+
+.login-form {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 18px;
+}
+
+.login-form label {
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--muted);
+	margin-top: 8px;
+}
+
+.login-form input {
+	font-family: inherit;
+	font-size: 0.95rem;
+	color: var(--text);
+	background: var(--bg-subtle);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	padding: 10px 12px;
+	width: 100%;
+}
+
+.login-form input:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.login-form .btn {
+	margin-top: 18px;
+	padding: 11px 16px;
+}
+
+.login-error {
+	margin: 16px 0 0 0;
+	padding: 10px 12px;
+	border-radius: var(--radius-sm);
+	background: var(--bad-bg);
+	border: 1px solid var(--bad);
+	color: var(--text);
+	font-size: 0.875rem;
+}
+
+.session-box {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.session-user {
+	color: var(--muted);
+	font-size: 0.875rem;
+}
+
+.btn-quiet {
+	background: transparent;
+	color: var(--text-secondary);
+	border: 1px solid var(--border-strong);
+	box-shadow: none;
+	padding: 7px 12px;
+}
+
+.btn-quiet:hover {
+	background: var(--bg-subtle);
+	color: var(--text);
 }

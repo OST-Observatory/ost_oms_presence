@@ -1,6 +1,7 @@
 import json
 
 import observatory_presence as op
+from conftest import csrf_from, login
 
 
 def auth_headers():
@@ -150,3 +151,157 @@ def test_atomic_save_writes_valid_json(client, tmp_path, monkeypatch):
     with open(path, encoding='utf-8') as f:
         data = json.load(f)
     assert data['user'] == 'save-test'
+
+
+# --- Dashboard login -------------------------------------------------------
+
+def test_dashboard_redirects_when_anonymous(anon_client):
+    r = anon_client.get('/')
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/login')
+
+
+def test_camera_media_requires_login(anon_client):
+    r = anon_client.get('/media/cameras/outdoor_current.jpg')
+    assert r.status_code == 401
+
+
+def test_api_endpoints_401_when_anonymous(anon_client):
+    for path in ('/status', '/logbook'):
+        r = anon_client.get(path)
+        assert r.status_code == 401, path
+        assert r.get_json()['ok'] is False
+
+
+def test_login_success_sets_session(anon_client):
+    r = login(anon_client)
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/')
+    assert anon_client.get('/status').status_code == 200
+    html = anon_client.get('/').get_data(as_text=True)
+    assert 'Alice Example' in html
+    assert 'Sign out' in html
+
+
+def test_login_wrong_password_rejected(anon_client):
+    r = login(anon_client, password='wrong')
+    assert r.status_code == 401
+    assert 'Sign-in failed' in r.get_data(as_text=True)
+    assert anon_client.get('/status').status_code == 401
+
+
+def test_login_empty_password_rejected(anon_client):
+    # An LDAP bind with an empty password is an unauthenticated bind and
+    # would otherwise succeed. It must never be accepted.
+    r = login(anon_client, password='')
+    assert r.status_code in (400, 401)
+    assert anon_client.get('/status').status_code == 401
+
+
+def test_login_unknown_user_rejected(anon_client):
+    r = login(anon_client, username='mallory', password='whatever')
+    assert r.status_code == 401
+    assert anon_client.get('/status').status_code == 401
+
+
+def test_login_requires_csrf_token(anon_client):
+    anon_client.get('/login')
+    r = anon_client.post(
+        '/login', data={'username': 'alice', 'password': 'correct-horse'}
+    )
+    assert r.status_code == 400
+    assert anon_client.get('/status').status_code == 401
+
+
+def test_login_lockout_after_repeated_failures(anon_client):
+    for _ in range(op.LOGIN_MAX_ATTEMPTS):
+        assert login(anon_client, password='wrong').status_code == 401
+    r = login(anon_client, password='wrong')
+    assert r.status_code == 429
+    # Correct credentials are refused too while the lockout is active.
+    assert login(anon_client).status_code == 429
+
+
+def test_login_ignores_offsite_next_target(anon_client):
+    r = login(anon_client, next='https://evil.example/phish')
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/')
+    assert 'evil.example' not in r.headers['Location']
+
+
+def test_login_honours_relative_next_target(anon_client):
+    r = login(anon_client, next='/logbook')
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/logbook')
+
+
+def test_logout_clears_session(client):
+    html = client.get('/').get_data(as_text=True)
+    r = client.post('/logout', data={'csrf_token': csrf_from(html)})
+    assert r.status_code == 302
+    assert r.headers['Location'].endswith('/login')
+    assert client.get('/status').status_code == 401
+
+
+def test_logout_requires_csrf_token(client):
+    assert client.post('/logout').status_code == 400
+    assert client.get('/status').status_code == 200
+
+
+def test_public_pages_need_no_login(anon_client):
+    assert anon_client.get('/health').status_code == 200
+    r = anon_client.get('/datenschutz')
+    assert r.status_code == 200
+    assert 'Informationen zum Datenschutz' in r.get_data(as_text=True)
+
+
+def test_agent_posts_work_without_session(anon_client):
+    r = anon_client.post(
+        '/start', data={'user': 'agent'}, headers=auth_headers()
+    )
+    assert r.status_code == 200
+    r = anon_client.post(
+        '/host_status', json={'hostId': 'OMS-PC', 'cpuPercent': 5}, headers=auth_headers()
+    )
+    assert r.status_code == 200
+
+
+def test_expired_session_is_rejected(anon_client, monkeypatch):
+    login(anon_client)
+    assert anon_client.get('/status').status_code == 200
+    monkeypatch.setattr(op, 'SESSION_LIFETIME_HOURS', 0.0)
+    assert anon_client.get('/status').status_code == 401
+
+
+def test_anonymous_dashboard_flag_skips_login(anon_client, monkeypatch):
+    monkeypatch.setattr(op, 'ALLOW_ANONYMOUS_DASHBOARD', True)
+    assert anon_client.get('/status').status_code == 200
+    assert anon_client.get('/').status_code == 200
+
+
+def test_privacy_page_public_and_english(anon_client):
+    r = anon_client.get('/privacy')
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert 'Privacy notice' in html
+    assert 'lang="en"' in html
+    # The things the sign-in actually processes must be named.
+    for expected in ('ost_status_session', 'GDPR', 'BbgDSG', 'seven days'):
+        assert expected in html, expected
+    # Reading it must not set a cookie -- you read it before signing in.
+    assert 'Set-Cookie' not in r.headers
+
+
+def test_privacy_page_links_camera_notice(anon_client):
+    html = anon_client.get('/privacy').get_data(as_text=True)
+    assert '/datenschutz' in html
+
+
+def test_both_notices_linked_from_login_page(anon_client):
+    html = anon_client.get('/login').get_data(as_text=True)
+    assert '/privacy' in html and '/datenschutz' in html
+
+
+def test_both_notices_linked_from_dashboard(client):
+    html = client.get('/').get_data(as_text=True)
+    assert '/privacy' in html and '/datenschutz' in html

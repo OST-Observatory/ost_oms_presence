@@ -14,6 +14,15 @@
 	<header class="container header">
 		<h1>Observatory Dashboard</h1>
 		<div class="status-pill" id="status-pill"><span id="status-text">Loading…</span></div>
+		{% if user %}
+		<div class="session-box">
+			<span class="session-user">{{ user.display_name or user.uid }}</span>
+			<form method="post" action="{{ base_path }}/logout">
+				<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+				<button type="submit" class="btn btn-quiet">Sign out</button>
+			</form>
+		</div>
+		{% endif %}
 	</header>
 
 	<main class="container grid">
@@ -105,7 +114,8 @@
 
 	<footer class="container footer">
 		<span id="last-refresh" class="muted">Last refresh: —</span>
-		<a class="footer-link" href="{{ base_path }}/datenschutz">Datenschutz</a>
+		<a class="footer-link" href="{{ base_path }}/privacy">Privacy notice</a>
+		<a class="footer-link" href="{{ base_path }}/datenschutz">Cameras (DE)</a>
 	</footer>
 </body>
 </html>
