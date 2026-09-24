@@ -310,7 +310,8 @@ ProxyPass /ost_status/media !
         </LimitExcept>
 </LocationMatch>
 
-# Privacy notice for the dashboard — must be readable before signing in
+# Old dashboard privacy notice URL — the app answers with a 301 to the central
+# privacy policy (/static/datenschutz.html#en-status); public so old links keep working
 <LocationMatch "^/ost_status/privacy/?$">
         <Limit GET HEAD>
                 Require all granted
@@ -349,7 +350,7 @@ Notes:
 - If other apps on the same server are also proxied to UNIX sockets, give every `ProxyPass` a **unique** dummy hostname (e.g. `http://ost-status.invalid/`, `http://ost-inventory.invalid/`). Two UDS backends sharing `http://localhost/` collide on a single mod_proxy worker, and requests are routed to whichever backend was declared first in the configuration. The usual symptom is the *other* app's 404 page appearing under `/ost_status` while `systemctl status observatory_presence` still looks healthy.
 - POSTs (session start/heartbeat/release, host/telescope status) must come from the observatory client host listed in `<Limit POST>`. The Flask app still requires `Authorization: Bearer`.
 - `GET /ost_status/datenschutz` is public (no campus IP, no login) so it can be linked from a QR code on the posted camera notice. Camera images and the dashboard stay restricted.
-- `GET /ost_status/privacy` is public as well: a privacy notice has to be readable *before* signing in, and it must stay reachable if the campus / VPN restriction is ever removed.
+- `GET /ost_status/privacy` is public as well, but only answers with a permanent redirect (301) to the dashboard section of the central privacy policy on the landing page (`/static/datenschutz.html#en-status`, at the host root, not under `/ost_status`). The exception stays so old links and bookmarks keep redirecting before signing in and from outside the campus / VPN.
 
 ### 6b) Webcam media directory
 Create the upload target and point your existing camera upload scripts at it:
@@ -536,11 +537,11 @@ Unblock-File -Path "C:\observatory_presence\autostart_client_prompt.ps1"
 | Network | Browsers (GET/HEAD) | Apache `Require ip` — campus / VPN prefixes only |
 | Browser | Humans | Application login against campus LDAP, session cookie, optionally restricted to LDAP groups |
 | Agents | Observatory Windows scripts (POST) | Apache `Require ip` (observatory host) **and** `Authorization: Bearer` + `SECRET_TOKEN` |
-| Public | Privacy notices | `GET /ost_status/datenschutz` and `GET /ost_status/privacy` (and their CSS/fonts) — no IP allowlist, no login |
+| Public | Privacy notices | `GET /ost_status/datenschutz` (camera notice) and `GET /ost_status/privacy` (301 to the central privacy policy), plus CSS/fonts — no IP allowlist, no login |
 
-The LDAP login and the bearer token are **not** interchangeable: agents have no directory account and never log in, humans never use the token. Camera media and dashboard JS remain campus / VPN only. The privacy page is intentionally reachable from the public internet so a QR code on the posted information sheet can open it.
+The LDAP login and the bearer token are **not** interchangeable: agents have no directory account and never log in, humans never use the token. Camera media and dashboard JS remain campus / VPN only. The camera notice is intentionally reachable from the public internet so a QR code on the posted information sheet can open it. The privacy information for the dashboard itself lives in the central privacy policy of the landing page (`/static/datenschutz.html#status` / `#en-status`), which is served outside this app; the login page and the dashboard footer link to it (and to the legal notice `/static/impressum.html`) directly.
 
-Public (no login): `/ost_status/datenschutz`, `/ost_status/privacy`, `/ost_status/health`, `/ost_status/login`, and the CSS/font assets.
+Public (no login): `/ost_status/datenschutz`, `/ost_status/privacy` (redirect only), `/ost_status/health`, `/ost_status/login`, and the CSS/font assets.
 Login required: `/ost_status/` (the dashboard), `/ost_status/status`, `/ost_status/logbook`, `/ost_status/media/cameras/*`.
 Token required (unchanged): `POST /start`, `/heartbeat`, `/release`, `/host_status`, `/telescope_status`.
 
@@ -586,7 +587,9 @@ Failed logins are counted per username+IP: `LOGIN_MAX_ATTEMPTS` (default 5) with
 
 ### Personal data processed by the login
 
-The sign-in introduced personal data that the camera privacy notice does not cover, so the dashboard has its own notice at `/ost_status/privacy` (`templates/privacy.html`, English). It is public — a privacy notice has to be readable before signing in. What it documents:
+The sign-in introduced personal data that the camera privacy notice does not cover. The privacy notice for it no longer lives in this repository: it is part of the **central privacy policy of the landing page** (repo `ost_landing_page`, file `static/datenschutz.html`, section `#status` in German and `#en-status` in English), served at `https://<host>/static/datenschutz.html`. The former page `/ost_status/privacy` (`templates/privacy.html`) was removed; the route now answers with a permanent redirect (301) to `/static/datenschutz.html#en-status`, and the login page and dashboard footer link there directly. The central policy is public — a privacy notice has to be readable before signing in.
+
+The table below is kept as operator documentation of what the dashboard processes; the central policy has to describe the same:
 
 | Data | Where | Retention |
 |------|-------|-----------|
@@ -597,9 +600,9 @@ The sign-in introduced personal data that the camera privacy notice does not cov
 | Failed-attempt counter (user name + IP) | Process memory only | `LOGIN_LOCKOUT_SECONDS` (5 min), lost on restart |
 | Observing session log (free-text name entered at the OMS, target, start/end, duration, reason) | `SESSION_LOG_FILE` | **No automatic deletion** |
 
-The name in the observing session log is **not** the sign-in identity: it is free text typed into the dialog of `autostart_client_prompt.ps1` on the observatory PC and is never checked against the directory. The privacy notice states that giving it is voluntary and that a first name (or a group designation such as "Schulklasse" for guided observations) is enough.
+The name in the observing session log is **not** the sign-in identity: it is free text typed into the dialog of `autostart_client_prompt.ps1` on the observatory PC and is never checked against the directory. The central privacy policy states that giving it is voluntary and that a first name (or a group designation such as "Schulklasse" for guided observations) is enough.
 
-If the journal retention on the server is ever changed away from 7 days, or a retention limit is introduced for the observing session log, update `templates/privacy.html` to match — the notice states concrete periods.
+If the journal retention on the server is ever changed away from 7 days, or a retention limit is introduced for the observing session log, update the dashboard section (`#status` / `#en-status`) of `static/datenschutz.html` in the `ost_landing_page` repository to match — the policy states concrete periods. The same applies to any other change to the table above (new cookies, new directory attributes, new log entries).
 
 The camera notice at `templates/datenschutz.html` is deliberately untouched: it covers only the video surveillance and is linked from the posted information sheet. Visiting it sets no cookie.
 
@@ -674,7 +677,7 @@ The dashboard loads `GET /logbook` (newest first, default last 100 entries). All
 - `ldap_auth.py` (LDAP bind, TLS hardening, group membership)
 - `templates/index.html` / `templates/login.html` (dashboard, login form)
 - `templates/datenschutz.html` (public camera privacy notice, German — linked from the posted information sheet)
-- `templates/privacy.html` (privacy notice for the dashboard itself: sign-in, session, session log)
+- The privacy notice for the dashboard itself (sign-in, session, session log) is **not** in this repository: it is the `#status` / `#en-status` section of `static/datenschutz.html` in `ost_landing_page`. `/ost_status/privacy` only redirects there.
 - `autostart_client_prompt.ps1` (Windows client)
 - `deploy/systemd/observatory_presence.service` (systemd unit)
 - `deploy/systemd/observatory_presence.env.example` (environment variables)
@@ -722,6 +725,6 @@ BASE_URL=http://localhost:5000 TOKEN=devtoken \
 4. Copy the updated fail2ban filter (it now also matches failed logins) and `systemctl restart fail2ban`.
 5. Roll out updated `autostart_client_prompt.ps1`; verify `OBS_PRESENCE_TOKEN` on each client. The agents are unaffected by the login.
 6. From campus / VPN: open `https://<host>/ost_status/` in a browser and log in; verify an account in none of the allowed groups is rejected. Then `BASE_URL=https://<host>/ost_status TOKEN=<token> LOGIN_USER=<uid> LOGIN_PASSWORD=<pw> bash deploy/tests/http_tests.sh`.
-7. Verify `https://<host>/ost_status/privacy` opens without a login (it is linked from the sign-in page). If the journal retention or the observing-log retention differs from what `templates/privacy.html` states, correct the page.
+7. Verify `https://<host>/ost_status/privacy` answers with a 301 to `/static/datenschutz.html#en-status` without a login (`http_tests.sh` checks this), and that the footer links on the sign-in page (Privacy notice, Privacy notice CCTV (DE), Legal notice) open. If the journal retention or the observing-log retention differs from what the `#status` / `#en-status` section of the central privacy policy (`ost_landing_page`, `static/datenschutz.html`) states, correct it there.
 8. Once the LDAP login works, delete the obsolete `/etc/apache2/ost_status.htpasswd`.
 9. Optional: redirect legacy camera URL using `deploy/apache/camera_redirect.conf.example`.

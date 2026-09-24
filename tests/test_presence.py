@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import observatory_presence as op
 from conftest import csrf_from, login
@@ -279,29 +280,39 @@ def test_anonymous_dashboard_flag_skips_login(anon_client, monkeypatch):
     assert anon_client.get('/').status_code == 200
 
 
-def test_privacy_page_public_and_english(anon_client):
+CENTRAL_PRIVACY = '/static/datenschutz.html#en-status'
+LEGAL_NOTICE = '/static/impressum.html'
+
+
+def test_privacy_redirects_to_central_policy(anon_client):
+    # Public (no login) permanent redirect to the dashboard section of the
+    # central privacy policy on the landing page -- root-absolute, not under
+    # BASE_PATH.
     r = anon_client.get('/privacy')
-    assert r.status_code == 200
-    html = r.get_data(as_text=True)
-    assert 'Privacy notice' in html
-    assert 'lang="en"' in html
-    # The things the sign-in actually processes must be named.
-    for expected in ('ost_status_session', 'GDPR', 'BbgDSG', 'seven days'):
-        assert expected in html, expected
-    # Reading it must not set a cookie -- you read it before signing in.
+    assert r.status_code in (301, 308)
+    location = r.headers['Location']
+    assert location.endswith(CENTRAL_PRIVACY)
+    assert '/ost_status' not in location
+    assert '/login' not in location
+    # Following the redirect of an old link must not set a cookie.
     assert 'Set-Cookie' not in r.headers
 
 
-def test_privacy_page_links_camera_notice(anon_client):
-    html = anon_client.get('/privacy').get_data(as_text=True)
-    assert '/datenschutz' in html
+def test_privacy_template_removed():
+    assert not (Path(op.__file__).parent / 'templates' / 'privacy.html').exists()
 
 
-def test_both_notices_linked_from_login_page(anon_client):
+def test_notices_linked_from_login_page(anon_client):
     html = anon_client.get('/login').get_data(as_text=True)
-    assert '/privacy' in html and '/datenschutz' in html
+    assert f'href="{CENTRAL_PRIVACY}"' in html
+    assert f'href="{LEGAL_NOTICE}"' in html
+    assert '/datenschutz"' in html
+    assert '/privacy"' not in html
 
 
-def test_both_notices_linked_from_dashboard(client):
+def test_notices_linked_from_dashboard(client):
     html = client.get('/').get_data(as_text=True)
-    assert '/privacy' in html and '/datenschutz' in html
+    assert f'href="{CENTRAL_PRIVACY}"' in html
+    assert f'href="{LEGAL_NOTICE}"' in html
+    assert '/datenschutz"' in html
+    assert '/privacy"' not in html

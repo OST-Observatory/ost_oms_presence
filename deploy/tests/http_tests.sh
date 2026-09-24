@@ -22,6 +22,19 @@ curl -fsSL "$BASE_URL/health" | jq .
 echo "GET /datenschutz (public)"
 curl -fsSL -o /dev/null -w "  %{http_code}\n" "$BASE_URL/datenschutz"
 
+echo "GET /privacy (public, permanent redirect to the central privacy policy)"
+headers=$(curl -sS -o /dev/null -D - "$BASE_URL/privacy" | tr -d '\r')
+code=$(printf '%s\n' "$headers" | awk 'NR==1 {print $2}')
+location=$(printf '%s\n' "$headers" | awk 'tolower($1)=="location:" {print $2}')
+case "$code" in
+  301|308) ;;
+  *) echo "  FAIL: expected 301/308, got $code" >&2; exit 1 ;;
+esac
+case "$location" in
+  */static/datenschutz.html#en-status) echo "  $code -> $location" ;;
+  *) echo "  FAIL: unexpected redirect target '$location'" >&2; exit 1 ;;
+esac
+
 echo "GET /status without a session (must be 401)"
 code=$(curl -sSL -o /dev/null -w '%{http_code}' "$BASE_URL/status")
 if [ "$code" != "401" ]; then

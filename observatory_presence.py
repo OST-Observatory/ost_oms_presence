@@ -669,17 +669,23 @@ def datenschutz():
     )
 
 
+# The dashboard's privacy information (sign-in, session, observing session
+# log) lives in the central privacy policy of the landing page at the host
+# root (repo ost_landing_page, static/datenschutz.html, sections #status /
+# #en-status). Root-absolute on purpose: the landing page is not under
+# BASE_PATH.
+CENTRAL_PRIVACY_URL = '/static/datenschutz.html#en-status'
+
+
 @app.route('/privacy')
 def privacy():
-    """Privacy notice for the dashboard itself (sign-in, session, session log).
+    """Permanent redirect to the dashboard section of the central privacy policy.
 
-    Public on purpose: it has to be readable before signing in. The camera
-    surveillance has its own notice at /datenschutz.
+    Public on purpose (no login_required): old links and bookmarks must keep
+    working before signing in. The camera surveillance keeps its own notice
+    at /datenschutz.
     """
-    return render_template(
-        'privacy.html',
-        base_path=BASE_PATH or '',
-    )
+    return redirect(CENTRAL_PRIVACY_URL, code=301)
 
 
 @app.route('/status')
