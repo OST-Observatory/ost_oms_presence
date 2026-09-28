@@ -598,11 +598,11 @@ The table below is kept as operator documentation of what the dashboard processe
 | Sign-in / failure / lockout / sign-out events with user name and client IP | systemd journal | 7 days |
 | Apache access log (IP, time, URL, status, user agent, referrer) | `/var/log/apache2/access.log` | 7 days |
 | Failed-attempt counter (user name + IP) | Process memory only | `LOGIN_LOCKOUT_SECONDS` (5 min), lost on restart |
-| Observing session log (free-text name entered at the OMS, target, start/end, duration, reason) | `SESSION_LOG_FILE` | **No automatic deletion** |
+| Observing session log (free-text name entered at the OMS, target, start/end, duration, reason) | `SESSION_LOG_FILE` | **Permanent** (consent; credits observers when data is reused) |
 
-The name in the observing session log is **not** the sign-in identity: it is free text typed into the dialog of `autostart_client_prompt.ps1` on the observatory PC and is never checked against the directory. The central privacy policy states that giving it is voluntary and that a first name (or a group designation such as "Schulklasse" for guided observations) is enough.
+The name in the observing session log is **not** the sign-in identity: it is free text typed into the dialog of `autostart_client_prompt.ps1` on the observatory PC and is never checked against the directory. The central privacy policy states that giving it is voluntary, that the log is kept permanently so observers can be credited when their data is reused, that the legal basis is the observers' consent, and that a withdrawn consent removes the name from the entries concerned (edit `SESSION_LOG_FILE` by hand). For guided observations a group designation such as "Schulklasse" is enough.
 
-If the journal retention on the server is ever changed away from 7 days, or a retention limit is introduced for the observing session log, update the dashboard section (`#status` / `#en-status`) of `static/datenschutz.html` in the `ost_landing_page` repository to match — the policy states concrete periods. The same applies to any other change to the table above (new cookies, new directory attributes, new log entries).
+If the journal retention on the server is ever changed away from 7 days, or the handling of the observing session log changes, update the dashboard section (`#status` / `#en-status`) of `static/datenschutz.html` in the `ost_landing_page` repository to match — the policy states concrete periods. The same applies to any other change to the table above (new cookies, new directory attributes, new log entries).
 
 The camera notice at `templates/datenschutz.html` is deliberately untouched: it covers only the video surveillance and is linked from the posted information sheet. Visiting it sets no cookie.
 

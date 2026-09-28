@@ -9,9 +9,8 @@
 
 ## Data protection / retention
 
-- [ ] The observing session log (`SESSION_LOG_FILE`) has no automatic deletion.
-  Define a retention period (e.g. delete or anonymise entries older than N months),
-  implement it (cleaner loop or cron job), and update the dashboard section
-  (`#status` / `#en-status`) of the central privacy policy
-  (ost_landing_page, `static/datenschutz.html`) and the table in `README.md`
-  ("Personal data processed by the login") to match.
+- [x] Observing session log (`SESSION_LOG_FILE`): **kept permanently on purpose** (decided 2026-09).
+  Observers have consented to the log in its current form; it records who made which
+  observation so they can be credited when the data is reused (e.g. in papers). Legal basis in
+  the central privacy policy (`#status` / `#en-status`): consent, withdrawal removes the name
+  from the entries concerned (by hand in `SESSION_LOG_FILE`).
