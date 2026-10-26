@@ -4,6 +4,6 @@ click>=8.3.3
 gunicorn>=22,<24
 ldap3>=2.9.1,<3
 
-# Security pins (transitive deps; keep at or above patched versions)
-# werkzeug: CVE-2026-102598 (fixed in 3.1.9). Transitive via tensorflow -> tensorboard (>=1.0.1, no upper bound).
+# Security pins (keep at or above patched versions)
+# werkzeug: CVE-2026-102598 (fixed in 3.1.9). Direct dependency, also required by flask.
 werkzeug==3.1.9
